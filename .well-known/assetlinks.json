@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "com.eipplan.app",
+        "sha256_cert_fingerprints": ["20:AF:05:E3:24:37:3D:4E:29:72:89:9D:EC:2C:79:3E:62:17:39:60:CB:C1:95:48:D5:C0:96:86:9B:39:B8:D2"]
+      }
+    }]
