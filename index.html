@@ -100,6 +100,7 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
     border:1px solid var(--line); border-radius:var(--radius); padding:12px 14px; margin-bottom:10px;
   }
   .visit.done{opacity:.55;}
+  .visit.atrasado{border-color:var(--red);background:var(--red-bg);}
   .drag-handle{
     flex:none;font-size:18px;color:var(--ink-soft);cursor:grab;touch-action:none;
     padding:2px 4px;margin-top:-2px;user-select:none;
@@ -256,7 +257,7 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
       <button class="btn wood block" onclick="verRutaCompleta()">🗺️ Ver ruta completa del día</button>
       <div style="height:8px;"></div>
       <div id="agendaList"></div>
-      <button class="btn ghost block" onclick="openAgendaAddMenu()">+ Agregar (visita, flete o tarea)</button>
+      <div id="agendaCompletadas"></div>
     </section>
 
     <!-- CLIENTES -->
@@ -342,6 +343,12 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
       <div class="card">
         <h3>Cerrar caja del día</h3>
         <div class="muted" style="margin-bottom:10px;">Historial de cierres guardados: <b id="cantidadCierres">0</b></div>
+      </div>
+      <div class="card">
+        <h3>Proveedores (cuenta corriente)</h3>
+        <div class="muted" style="margin-bottom:10px;">Lo que les comprás vs. los servicios que les prestás — el saldo se compensa una vez al mes.</div>
+        <div id="proveedoresList"></div>
+        <button class="btn wood block" style="margin-top:10px;" onclick="abrirNuevoProveedor()">+ Nuevo proveedor</button>
       </div>
       <div class="card">
         <h3>Importar clientes</h3>
@@ -462,6 +469,12 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
           <option value="Combustible">Combustible</option>
         </select>
       </div>
+      <div class="field" id="gastoSubcatField" style="display:none;">
+        <label>Subcategoría</label>
+        <select id="gastoSubcategoria" onchange="manejarSubcategoriaSelect()">
+          <option value="__nueva__">+ Crear nueva subcategoría</option>
+        </select>
+      </div>
       <div class="field"><label>Monto ($)</label><input id="gastoMonto" type="number"></div>
       <div class="field" id="gastoLitrosField" style="display:none;"><label>Litros (opcional)</label><input id="gastoLitros" type="number" placeholder="Ej: 20"></div>
       <div class="field"><label>Nota (opcional)</label><input id="gastoNota" placeholder="Ej: Lija y barniz"></div>
@@ -497,6 +510,11 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
         <textarea id="fDireccion" rows="2" placeholder="Pegá acá el link o dirección que te mandó el cliente por WhatsApp"></textarea>
       </div>
       <div class="field"><label>Cuánto tenés que cobrar ($)</label><input type="number" id="fMonto" placeholder="Ej: 5000"></div>
+      <div class="field">
+        <label style="display:flex;align-items:center;gap:8px;font-weight:600;color:var(--ink);">
+          <input type="checkbox" id="fSinCosto" onchange="toggleFleteSinCosto()"> Sin costo (flete propio, no se cobra)
+        </label>
+      </div>
       <div class="field"><label>Fecha</label><input type="date" id="fFecha"></div>
       <div class="field"><label>Horario pedido (opcional)</label><input type="time" id="fHora"></div>
       <button class="btn wood block" onclick="addFleteRapido()">Agregar a la ruta</button>
@@ -510,6 +528,7 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
     <div class="sheet-wrap">
       <button class="close-x" onclick="closeOverlay('ov-agenda-menu')">✕</button>
       <h2>¿Qué querés agregar?</h2>
+      <button class="btn ghost block" style="margin-bottom:10px;" onclick="closeOverlay('ov-agenda-menu'); openOverlay('ov-client');">🆕 Nuevo cliente</button>
       <button class="btn ghost block" style="margin-bottom:10px;" onclick="closeOverlay('ov-agenda-menu'); openAddVisit();">👤 Visita a un cliente</button>
       <button class="btn ghost block" style="margin-bottom:10px;" onclick="closeOverlay('ov-agenda-menu'); openFleteRapido();">🚚 Flete</button>
       <button class="btn ghost block" style="margin-bottom:10px;" onclick="closeOverlay('ov-agenda-menu'); openAddTask();">📝 Tarea</button>
@@ -551,7 +570,74 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
   </div>
 </div>
 
+<!-- MODAL: nuevo proveedor -->
+<div class="overlay" id="ov-nuevo-proveedor">
+  <div class="sheet">
+    <div class="sheet-wrap">
+      <button class="close-x" onclick="closeOverlay('ov-nuevo-proveedor')">✕</button>
+      <h2>Nuevo proveedor</h2>
+      <div class="field"><label>Nombre</label><input id="provNombre" placeholder="Ej: Maderera del Norte"></div>
+      <button class="btn wood block" onclick="guardarProveedor()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: detalle de proveedor -->
+<div class="overlay" id="ov-proveedor-detail">
+  <div class="sheet">
+    <div class="sheet-wrap">
+      <button class="close-x" onclick="closeOverlay('ov-proveedor-detail')">✕</button>
+      <h2 id="provDetailNombre">Proveedor</h2>
+      <div id="provDetailBody"></div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: compra a proveedor -->
+<div class="overlay" id="ov-compra-proveedor">
+  <div class="sheet">
+    <div class="sheet-wrap">
+      <button class="close-x" onclick="closeOverlay('ov-compra-proveedor')">✕</button>
+      <h2>Cargar compra</h2>
+      <div class="field"><label>Producto</label><input id="cpProducto" placeholder="Ej: Juego de comedor 6 sillas"></div>
+      <div class="field"><label>Costo del producto ($)</label><input type="number" id="cpCosto"></div>
+      <div class="field">
+        <label style="display:flex;align-items:center;gap:8px;font-weight:600;color:var(--ink);">
+          <input type="checkbox" id="cpTieneFlete" onchange="document.getElementById('cpFleteField').style.display=this.checked?'block':'none'"> Tiene recargo de flete de terceros
+        </label>
+      </div>
+      <div class="field" id="cpFleteField" style="display:none;"><label>Monto del flete ($)</label><input type="number" id="cpFlete"></div>
+      <button class="btn wood block" onclick="guardarCompraProveedor()">Guardar compra</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: servicio prestado al proveedor -->
+<div class="overlay" id="ov-servicio-proveedor">
+  <div class="sheet">
+    <div class="sheet-wrap">
+      <button class="close-x" onclick="closeOverlay('ov-servicio-proveedor')">✕</button>
+      <h2>Cargar servicio prestado</h2>
+      <div class="field"><label>Descripción</label><input id="spDescripcion" placeholder="Ej: Flete de mercadería a depósito"></div>
+      <div class="field"><label>Monto ($)</label><input type="number" id="spMonto"></div>
+      <button class="btn wood block" onclick="guardarServicioProveedor()">Guardar servicio</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: nueva tarea -->
+<!-- MODAL: reagendar item genérico (tarea o flete) -->
+<div class="overlay" id="ov-reagendar-item">
+  <div class="sheet">
+    <div class="sheet-wrap">
+      <button class="close-x" onclick="closeOverlay('ov-reagendar-item')">✕</button>
+      <h2>Reagendar</h2>
+      <div class="field"><label>Nueva fecha</label><input type="date" id="reagendarItemFecha"></div>
+      <button class="btn wood block" onclick="confirmarReagendarItem()">Guardar nueva fecha</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="ov-tarea">
   <div class="sheet">
     <div class="sheet-wrap">
@@ -645,6 +731,10 @@ let state = {
   objetivoClientesNuevos: 0,
   cierres: [],  // {id, fecha, vendido, cobrado, gastado, balance, hora}
   reprogramaciones: [], // {id, clientId, fecha, fechaAnterior, fechaNueva, modo}
+  subcategoriasPersonales: ['Casa','Chicos','Almacén'],
+  proveedores: [], // {id, nombre}
+  comprasProveedor: [], // {id, proveedorId, producto, costo, flete, fecha}
+  serviciosProveedor: [], // {id, proveedorId, descripcion, monto, fecha}
   nextCode: 1
 };
 let selectedAgendaDate = null;
@@ -704,6 +794,7 @@ function importarClientes(){
       const listaPagos = Array.isArray(datos) ? [] : (datos.payments || []);
       const listaVisitas = Array.isArray(datos) ? [] : (datos.visits || []);
       const listaVentas = Array.isArray(datos) ? [] : (datos.sales || []);
+      const listaReprogramaciones = Array.isArray(datos) ? [] : (datos.reprogramaciones || []);
       const idMap = {};
       let agregados = 0;
 
@@ -744,9 +835,17 @@ function importarClientes(){
         ventasAgregadas++;
       });
 
+      let reagendasAgregadas = 0;
+      listaReprogramaciones.forEach(r=>{
+        const clientId = idMap[r._origId];
+        if(!clientId) return;
+        state.reprogramaciones.push({id:uid(), clientId, fecha:r.fecha, fechaAnterior:r.fechaAnterior, fechaNueva:r.fechaNueva, modo:r.modo||'reagendar'});
+        reagendasAgregadas++;
+      });
+
       saveState();
       renderAll();
-      resultado.textContent = `${agregados} clientes, ${pagosAgregados} pagos, ${visitasAgregadas} visitas y ${ventasAgregadas} ventas importadas.`;
+      resultado.textContent = `${agregados} clientes, ${pagosAgregados} pagos, ${visitasAgregadas} visitas, ${ventasAgregadas} ventas y ${reagendasAgregadas} reagendas importadas.`;
       toast('Importación completa');
     }catch(err){
       resultado.textContent = 'Error al leer el archivo: '+err.message;
@@ -792,7 +891,7 @@ function resetAllData(){
 }
 
 /* ---------- Navegación ---------- */
-function showSection(name){
+function showSection(name, fromBack){
   document.querySelectorAll('section').forEach(s=>s.classList.remove('active'));
   document.getElementById('sec-'+name).classList.add('active');
   document.querySelectorAll('nav.bottom button').forEach(b=>b.classList.toggle('active', b.dataset.sec===name));
@@ -805,15 +904,32 @@ function showSection(name){
   };
   document.getElementById('headerTitle').textContent = titles[name][0];
   document.getElementById('headerSub').textContent = titles[name][1];
-  document.getElementById('fabAdd').style.display = name==='clientes' ? 'flex' : (name==='agenda' ? 'none' : 'none');
   if(name==='caja') renderCaja();
   if(name==='balance') renderBalance();
   if(name==='mas') renderMas();
+  if(!fromBack) history.pushState({section:name}, '');
 }
-function fabAction(){ openOverlay('ov-client'); }
+function fabAction(){ openAgendaAddMenu(); }
 
-function openOverlay(id){ document.getElementById(id).classList.add('show'); }
-function closeOverlay(id){ document.getElementById(id).classList.remove('show'); }
+function openOverlay(id){
+  document.getElementById(id).classList.add('show');
+  history.pushState({overlay:id}, '');
+}
+function closeOverlay(id){
+  document.getElementById(id).classList.remove('show');
+}
+
+/* Botón atrás de Android: cierra modales o vuelve a la pestaña anterior, en vez de salir de la app */
+history.replaceState({section:'agenda'}, '');
+window.addEventListener('popstate', function(e){
+  const abierto = document.querySelector('.overlay.show');
+  if(abierto){
+    abierto.classList.remove('show');
+    return;
+  }
+  const seccion = (e.state && e.state.section) || 'agenda';
+  showSection(seccion, true);
+});
 
 /* ---------- Clientes ---------- */
 function setClientType(t){
@@ -950,14 +1066,21 @@ function renderClientes(filterText, filterType){
     } else {
       right = `<div class="muted">${c.estado==='cobrado' ? 'Cobrado ✓' : fmtMoney(c.monto)}</div>`;
     }
-    return `<div class="client-row" onclick="openClientDetail('${c.id}')">
-      <div>
+    return `<div class="client-row" style="align-items:center;">
+      <div onclick="openClientDetail('${c.id}')" style="flex:1;cursor:pointer;">
         <div style="font-weight:700;font-size:14px;">${semaforoDot}${c.nombre}${c.puntosMalos>0?' ⚠️':''}</div>
         <div class="client-code">${c.code} · ${c.type==='muebles'?'Muebles':'Pintura'}</div>
       </div>
       ${right}
+      <button class="btn ghost" style="margin-left:8px;flex:none;" onclick="event.stopPropagation(); quickAddToAgenda('${c.id}')" title="Agregar a la agenda de hoy">📅+</button>
     </div>`;
   }).join('');
+}
+function quickAddToAgenda(clientId){
+  const fecha = selectedAgendaDate || todayStr();
+  state.visits.push({id:uid(), clientId, hora:'', fecha, done:false, orden:Date.now(), km:0});
+  saveState();
+  toast('Agregado a la agenda del '+fecha);
 }
 function filterClients(el, k){
   document.querySelectorAll('#clientFilters .chip').forEach(c=>c.classList.remove('on'));
@@ -1299,15 +1422,24 @@ function addVisitToday(){
 }
 function openFleteRapido(){
   document.getElementById('fFecha').value = selectedAgendaDate || todayStr();
+  document.getElementById('fSinCosto').checked = false;
+  document.getElementById('fMonto').disabled = false;
   openOverlay('ov-flete');
+}
+function toggleFleteSinCosto(){
+  const sinCosto = document.getElementById('fSinCosto').checked;
+  const montoInput = document.getElementById('fMonto');
+  montoInput.disabled = sinCosto;
+  if(sinCosto) montoInput.value = '0';
 }
 function addFleteRapido(){
   const ref = document.getElementById('fRef').value.trim() || 'Flete';
   const direccion = document.getElementById('fDireccion').value.trim();
-  const monto = Number(document.getElementById('fMonto').value||0);
+  const sinCosto = document.getElementById('fSinCosto').checked;
+  const monto = sinCosto ? 0 : Number(document.getElementById('fMonto').value||0);
   const hora = document.getElementById('fHora').value;
   const fecha = document.getElementById('fFecha').value || todayStr();
-  if(!monto){ toast('Ingresá cuánto tenés que cobrar'); return; }
+  if(!sinCosto && !monto){ toast('Ingresá cuánto tenés que cobrar, o tildá "Sin costo"'); return; }
   state.visits.push({id:uid(), tipo:'flete', ref, direccion, monto, hora, fecha, done:false, registrado:false, orden:Date.now(), km: 3+Math.round(Math.random()*6)});
   saveState(); closeOverlay('ov-flete');
   ['fRef','fDireccion','fMonto','fHora'].forEach(id=>document.getElementById(id).value='');
@@ -1317,6 +1449,21 @@ function deleteVisit(id){
   if(!confirm('¿Borrar esta visita/flete de la agenda?')) return;
   state.visits = state.visits.filter(x=>x.id!==id);
   saveState(); renderAgenda();
+}
+let reagendarItemId = null, reagendarItemTipo = null;
+function openReagendarItem(id, tipo){
+  reagendarItemId = id; reagendarItemTipo = tipo;
+  const item = tipo==='task' ? state.tasks.find(x=>x.id===id) : state.visits.find(x=>x.id===id);
+  document.getElementById('reagendarItemFecha').value = item ? item.fecha : todayStr();
+  openOverlay('ov-reagendar-item');
+}
+function confirmarReagendarItem(){
+  const nueva = document.getElementById('reagendarItemFecha').value;
+  if(!nueva){ toast('Elegí una fecha'); return; }
+  const item = reagendarItemTipo==='task' ? state.tasks.find(x=>x.id===reagendarItemId) : state.visits.find(x=>x.id===reagendarItemId);
+  if(item) item.fecha = nueva;
+  saveState(); closeOverlay('ov-reagendar-item'); renderAgenda();
+  toast('Reagendado para '+nueva);
 }
 function openAddTask(){
   document.getElementById('tTexto').value = '';
@@ -1359,10 +1506,12 @@ function toggleVisit(id){
   const v = state.visits.find(x=>x.id===id);
   v.done = !v.done;
   if(v.tipo==='flete'){
-    if(v.done && !v.registrado){
+    if(v.done && !v.registrado && v.monto>0){
       state.sales.push({id:uid(), monto:v.monto, fecha:v.fecha||todayStr(), nota:'Flete: '+(v.ref||'')});
       v.registrado = true;
       toast('Cobro de flete sumado a la caja');
+    } else if(v.done && v.monto===0){
+      v.registrado = true;
     }
   }
   saveState(); renderAgenda(); renderCaja();
@@ -1397,6 +1546,7 @@ function renderAgenda(){
   document.getElementById('agendaDateInput').value = selectedAgendaDate;
 
   const list = document.getElementById('agendaList');
+  const completadasBox = document.getElementById('agendaCompletadas');
   const visitasDia = state.visits.filter(v=> (v.fecha||todayStr())===selectedAgendaDate);
   const tareasDia = state.tasks.filter(t=> t.fecha===selectedAgendaDate);
   const esHoy = selectedAgendaDate===todayStr();
@@ -1404,76 +1554,110 @@ function renderAgenda(){
   document.getElementById('agendaCount').textContent = visitasDia.length;
   document.getElementById('agendaKm').textContent = visitasDia.reduce((s,v)=>s+(v.km||0),0)+' km';
 
-  if(visitasDia.length===0 && tareasDia.length===0){
+  const todosItems = [...visitasDia.map(v=>({...v,_kind:'visit'})), ...tareasDia.map(t=>({...t,_kind:'task'}))]
+    .sort((a,b)=> (a.orden||0) - (b.orden||0));
+  let pendientes = todosItems.filter(i=>!i.done);
+  const completados = todosItems.filter(i=>i.done);
+
+  // Si estamos viendo "hoy", sumamos arriba (en rojo) lo que quedó sin resolver de días anteriores
+  let atrasados = [];
+  if(esHoy){
+    const visitasAtrasadas = state.visits.filter(v=> !v.done && (v.fecha||todayStr()) < todayStr());
+    const tareasAtrasadas = state.tasks.filter(t=> !t.done && t.fecha < todayStr());
+    atrasados = [...visitasAtrasadas.map(v=>({...v,_kind:'visit'})), ...tareasAtrasadas.map(t=>({...t,_kind:'task'}))]
+      .sort((a,b)=> (a.fecha||'').localeCompare(b.fecha||''));
+  }
+  pendientes = [...atrasados, ...pendientes];
+
+  if(pendientes.length===0 && completados.length===0){
     list.innerHTML = `<div class="empty"><div class="big">🗺️</div>No hay nada cargado para este día.</div>`;
+    completadasBox.innerHTML = '';
     return;
   }
-  const itemsDia = [...visitasDia.map(v=>({...v,_kind:'visit'})), ...tareasDia.map(t=>({...t,_kind:'task'}))]
-    .sort((a,b)=> (a.orden||0) - (b.orden||0));
+  if(pendientes.length===0){
+    list.innerHTML = `<div class="empty" style="padding:20px;"><div class="big">✅</div>Ya no queda nada pendiente para este día.</div>`;
+  } else {
+    list.innerHTML = pendientes.map(item=>itemToHTML(item, !atrasados.includes(item), atrasados.includes(item))).join('');
+  }
+  activarArrastreAgenda();
 
-  const html = itemsDia.map(item=>{
-    const handle = `<div class="drag-handle" data-itemid="${item.id}" data-itemtype="${item._kind}">⠿</div>`;
-    if(item._kind==='task'){
-      const t = item;
-      return `<div class="visit ${t.done?'done':''}" data-itemid="${t.id}" data-itemtype="task">
-        ${handle}
-        <div class="check" onclick="toggleTask('${t.id}')">${t.done?'✓':''}</div>
-        <div class="visit-main">
-          <div class="visit-top"><div class="visit-name">${t.texto}</div><span class="tag" style="background:rgba(255,255,255,0.08);color:var(--ink-soft);border:1px solid var(--line);">Tarea</span></div>
-          <div class="visit-actions">
-            <button class="btn ghost" onclick="editTask('${t.id}')">✏️ Editar</button>
-            <button class="btn ghost" onclick="deleteTask('${t.id}')">🗑️</button>
-          </div>
+  completadasBox.innerHTML = completados.length===0 ? '' : `
+    <button class="btn ghost block" onclick="toggleCompletadasBox()" id="btnCompletadas" style="margin-top:6px;margin-bottom:8px;">✅ Completadas (${completados.length}) ▾</button>
+    <div id="listaCompletadas" style="display:none;">${completados.map(item=>itemToHTML(item, false, false)).join('')}</div>
+  `;
+}
+function toggleCompletadasBox(){
+  const el = document.getElementById('listaCompletadas');
+  const visible = el.style.display !== 'none';
+  el.style.display = visible ? 'none' : 'block';
+}
+function itemToHTML(item, draggable, atrasado){
+  const handle = draggable ? `<div class="drag-handle" data-itemid="${item.id}" data-itemtype="${item._kind}">⠿</div>` : '';
+  const claseAtrasado = atrasado ? ' atrasado' : '';
+  const avisoAtrasado = atrasado ? `<div style="color:var(--red);font-weight:700;font-size:11.5px;margin-bottom:2px;">⚠️ Atrasado desde ${item.fecha}</div>` : '';
+  if(item._kind==='task'){
+    const t = item;
+    return `<div class="visit ${t.done?'done':''}${claseAtrasado}" data-itemid="${t.id}" data-itemtype="task">
+      ${handle}
+      <div class="check" onclick="toggleTask('${t.id}')">${t.done?'✓':''}</div>
+      <div class="visit-main">
+        ${avisoAtrasado}
+        <div class="visit-top"><div class="visit-name">${t.texto}</div><span class="tag" style="background:rgba(255,255,255,0.08);color:var(--ink-soft);border:1px solid var(--line);">Tarea</span></div>
+        <div class="visit-actions">
+          <button class="btn ghost" onclick="editTask('${t.id}')">✏️ Editar</button>
+          <button class="btn ghost" onclick="openReagendarItem('${t.id}','task')">🗓️ Reagendar</button>
+          <button class="btn ghost" onclick="deleteTask('${t.id}')">🗑️</button>
         </div>
-      </div>`;
-    }
-    const v = item;
-    if(v.tipo==='flete'){
-      const esLink = /^https?:\/\//.test(v.direccion||'');
-      return `<div class="visit ${v.done?'done':''}" data-itemid="${v.id}" data-itemtype="visit">
-        ${handle}
-        <div class="check" onclick="toggleVisit('${v.id}')">${v.done?'✓':''}</div>
-        <div class="visit-main">
-          <div class="visit-top">
-            <div class="visit-name">${v.ref||'Flete'}</div>
-            <span class="tag flete">Flete</span>
-          </div>
-          <div class="visit-meta">${v.hora ? '⏰ '+v.hora+' · ' : ''}Cobrar ${fmtMoney(v.monto)} · ${v.km||0} km</div>
-          <div class="visit-actions">
-            ${esLink ? `<button class="btn ghost" onclick="window.open('${v.direccion}','_blank')">Ver ubicación</button>` : (v.direccion ? `<span class="muted">${v.direccion}</span>` : '')}
-            <button class="btn ghost" onclick="deleteVisit('${v.id}')">🗑️</button>
-          </div>
-        </div>
-      </div>`;
-    }
-    const c = state.clients.find(x=>x.id===v.clientId);
-    if(!c) return '';
-    const tagClass = c.type;
-    const tagLabel = c.type==='muebles'?'Muebles':'Pintura';
-    let metaLine = c.type==='muebles' ? `Cuota ${fmtMoney(c.montoCuota)}` : (c.descripcion||'');
-    const restante = c.type==='muebles' ? (c.cuotas - c.cuotasPagadas) * c.montoCuota : 0;
-    return `<div class="visit ${v.done?'done':''}" data-itemid="${v.id}" data-itemtype="visit">
+      </div>
+    </div>`;
+  }
+  const v = item;
+  if(v.tipo==='flete'){
+    const esLink = /^https?:\/\//.test(v.direccion||'');
+    return `<div class="visit ${v.done?'done':''}${claseAtrasado}" data-itemid="${v.id}" data-itemtype="visit">
       ${handle}
       <div class="check" onclick="toggleVisit('${v.id}')">${v.done?'✓':''}</div>
       <div class="visit-main">
+        ${avisoAtrasado}
         <div class="visit-top">
-          <div class="visit-name">${c.nombre}</div>
-          <span class="tag ${tagClass}">${tagLabel}${v.resultado==='sin_pago'?' · sin pago':''}</span>
+          <div class="visit-name">${v.ref||'Flete'}</div>
+          <span class="tag flete">Flete</span>
         </div>
-        <div class="visit-meta">${v.hora ? '⏰ '+v.hora+' · ' : ''}${metaLine} · ${v.km||0} km</div>
+        <div class="visit-meta">${v.hora ? '⏰ '+v.hora+' · ' : ''}${v.monto>0 ? 'Cobrar '+fmtMoney(v.monto) : 'Sin costo'} · ${v.km||0} km</div>
         <div class="visit-actions">
-          <button class="btn ghost" onclick="openClientDetail('${c.id}')">Ver ficha</button>
-          ${c.loc ? `<button class="btn ghost" onclick="window.open('https://maps.google.com/?q=${c.loc}','_blank')">Ver en mapa</button>` : ''}
-          ${c.type==='muebles' && c.tel ? `<button class="btn green" onclick="sendReminderWA('${c.id}')">Avisar: hoy vence</button>` : ''}
-          ${c.type==='muebles' && restante>0 && !v.done ? `<button class="btn ghost" onclick="openReprogramar('${c.id}')">Sin pago</button>` : ''}
+          ${esLink ? `<button class="btn ghost" onclick="window.open('${v.direccion}','_blank')">Ver ubicación</button>` : (v.direccion ? `<span class="muted">${v.direccion}</span>` : '')}
+          <button class="btn ghost" onclick="openReagendarItem('${v.id}','visit')">🗓️ Reagendar</button>
           <button class="btn ghost" onclick="deleteVisit('${v.id}')">🗑️</button>
         </div>
       </div>
     </div>`;
-  }).join('');
-
-  list.innerHTML = html;
-  activarArrastreAgenda();
+  }
+  const c = state.clients.find(x=>x.id===v.clientId);
+  if(!c) return '';
+  const tagClass = c.type;
+  const tagLabel = c.type==='muebles'?'Muebles':'Pintura';
+  let metaLine = c.type==='muebles' ? `Cuota ${fmtMoney(c.montoCuota)}` : (c.descripcion||'');
+  const restante = c.type==='muebles' ? (c.cuotas - c.cuotasPagadas) * c.montoCuota : 0;
+  return `<div class="visit ${v.done?'done':''}${claseAtrasado}" data-itemid="${v.id}" data-itemtype="visit">
+    ${handle}
+    <div class="check" onclick="toggleVisit('${v.id}')">${v.done?'✓':''}</div>
+    <div class="visit-main">
+      ${avisoAtrasado}
+      <div class="visit-top">
+        <div class="visit-name">${c.nombre}</div>
+        <span class="tag ${tagClass}">${tagLabel}${v.resultado==='sin_pago'?' · sin pago':''}</span>
+      </div>
+      <div class="visit-meta">${v.hora ? '⏰ '+v.hora+' · ' : ''}${metaLine} · ${v.km||0} km</div>
+      <div class="visit-actions">
+        <button class="btn ghost" onclick="openClientDetail('${c.id}')">Ver ficha</button>
+        ${c.loc ? `<button class="btn ghost" onclick="window.open('https://maps.google.com/?q=${c.loc}','_blank')">Ver en mapa</button>` : ''}
+        ${c.type==='muebles' && c.tel ? `<button class="btn green" onclick="sendReminderWA('${c.id}')">Avisar: hoy vence</button>` : ''}
+        ${c.type==='muebles' && restante>0 && !v.done ? `<button class="btn ghost" onclick="openReprogramar('${c.id}')">Sin pago</button>` : ''}
+        <button class="btn ghost" onclick="openReagendarItem('${v.id}','visit')">🗓️ Mover de día</button>
+        <button class="btn ghost" onclick="deleteVisit('${v.id}')">🗑️</button>
+      </div>
+    </div>
+  </div>`;
 }
 
 /* ---------- Reordenar agenda (mantener presionado y arrastrar) ---------- */
@@ -1528,19 +1712,43 @@ function onDragEndAgenda(){
 }
 
 /* ---------- Gastos / Combustible ---------- */
-function openExpense(){ toggleLitrosField(); openOverlay('ov-gasto'); }
-function toggleLitrosField(){
+function openExpense(){ actualizarCamposGasto(); openOverlay('ov-gasto'); }
+function actualizarCamposGasto(){
   const rubro = document.getElementById('gastoRubro').value;
   document.getElementById('gastoLitrosField').style.display = rubro==='Combustible' ? 'block' : 'none';
+  document.getElementById('gastoSubcatField').style.display = rubro==='Personales' ? 'block' : 'none';
+  if(rubro==='Personales') renderOpcionesSubcategoria();
+}
+function renderOpcionesSubcategoria(){
+  const sel = document.getElementById('gastoSubcategoria');
+  const actual = sel.value;
+  sel.innerHTML = state.subcategoriasPersonales.map(s=>`<option value="${s}">${s}</option>`).join('') + `<option value="__nueva__">+ Crear nueva subcategoría</option>`;
+  if(state.subcategoriasPersonales.includes(actual)) sel.value = actual;
+}
+function toggleLitrosField(){ actualizarCamposGasto(); }
+function manejarSubcategoriaSelect(){
+  const sel = document.getElementById('gastoSubcategoria');
+  if(sel.value==='__nueva__'){
+    const nueva = prompt('Nombre de la nueva subcategoría:');
+    if(nueva && nueva.trim()){
+      state.subcategoriasPersonales.push(nueva.trim());
+      saveState();
+      renderOpcionesSubcategoria();
+      sel.value = nueva.trim();
+    } else {
+      sel.value = state.subcategoriasPersonales[0] || '__nueva__';
+    }
+  }
 }
 function guardarGasto(){
   const rubro = document.getElementById('gastoRubro').value;
   const monto = Number(document.getElementById('gastoMonto').value||0);
   const litros = Number(document.getElementById('gastoLitros').value||0);
+  const subcategoria = rubro==='Personales' ? document.getElementById('gastoSubcategoria').value : '';
   let nota = document.getElementById('gastoNota').value;
   if(!monto){ toast('Ingresá un monto'); return; }
   if(rubro==='Combustible' && litros){ nota = (nota ? nota+' · ' : '') + litros+' litros'; }
-  state.expenses.push({id:uid(), rubro, monto, nota, fecha:todayStr()});
+  state.expenses.push({id:uid(), rubro, subcategoria, monto, nota, fecha:todayStr()});
   saveState(); closeOverlay('ov-gasto');
   document.getElementById('gastoMonto').value=''; document.getElementById('gastoNota').value=''; document.getElementById('gastoLitros').value='';
   renderCaja(); toast('Gasto guardado');
@@ -1704,11 +1912,118 @@ function renderMas(){
   document.getElementById('metaInput').value = state.metaMes || '';
   document.getElementById('metaClientesInput').value = state.objetivoClientesNuevos || '';
   document.getElementById('cantidadCierres').textContent = state.cierres.length;
+  renderProveedores();
 }
 function saveMeta(){
   state.metaMes = Number(document.getElementById('metaInput').value||0);
   state.objetivoClientesNuevos = Number(document.getElementById('metaClientesInput').value||0);
   saveState(); renderCaja(); renderMas(); toast('Objetivo guardado');
+}
+
+/* ---------- Proveedores (cuenta corriente) ---------- */
+function abrirNuevoProveedor(){
+  document.getElementById('provNombre').value = '';
+  openOverlay('ov-nuevo-proveedor');
+}
+function guardarProveedor(){
+  const nombre = document.getElementById('provNombre').value.trim();
+  if(!nombre){ toast('Ingresá un nombre'); return; }
+  state.proveedores.push({id:uid(), nombre});
+  saveState(); closeOverlay('ov-nuevo-proveedor'); renderMas();
+  toast('Proveedor guardado');
+}
+function renderProveedores(){
+  const box = document.getElementById('proveedoresList');
+  if(!box) return;
+  if(state.proveedores.length===0){ box.innerHTML = `<div class="muted">Todavía no cargaste proveedores.</div>`; return; }
+  const mesActual = todayStr().slice(0,7);
+  box.innerHTML = state.proveedores.map(p=>{
+    const compras = state.comprasProveedor.filter(c=>c.proveedorId===p.id && c.fecha.startsWith(mesActual));
+    const servicios = state.serviciosProveedor.filter(s=>s.proveedorId===p.id && s.fecha.startsWith(mesActual));
+    const totalCompras = compras.reduce((s,c)=>s+c.costo+(c.flete||0),0);
+    const totalServicios = servicios.reduce((s,x)=>s+x.monto,0);
+    const diferencia = totalCompras - totalServicios;
+    return `<div class="rubro-row" style="cursor:pointer;" onclick="abrirProveedorDetail('${p.id}')">
+      <span>${p.nombre}</span>
+      <b style="color:${diferencia>0?'var(--red)':'var(--green)'}">${diferencia>0?'Debo '+fmtMoney(diferencia):(diferencia<0?'A mi favor '+fmtMoney(-diferencia):'Al día')}</b>
+    </div>`;
+  }).join('');
+}
+let activeProveedorId = null;
+function abrirProveedorDetail(id){
+  activeProveedorId = id;
+  const p = state.proveedores.find(x=>x.id===id);
+  document.getElementById('provDetailNombre').textContent = p.nombre;
+  renderProveedorDetailBody();
+  openOverlay('ov-proveedor-detail');
+}
+function renderProveedorDetailBody(){
+  const p = state.proveedores.find(x=>x.id===activeProveedorId);
+  const mesActual = todayStr().slice(0,7);
+  const compras = state.comprasProveedor.filter(c=>c.proveedorId===p.id);
+  const servicios = state.serviciosProveedor.filter(s=>s.proveedorId===p.id);
+  const comprasMes = compras.filter(c=>c.fecha.startsWith(mesActual));
+  const serviciosMes = servicios.filter(s=>s.fecha.startsWith(mesActual));
+  const totalComprasMes = comprasMes.reduce((s,c)=>s+c.costo+(c.flete||0),0);
+  const totalServiciosMes = serviciosMes.reduce((s,x)=>s+x.monto,0);
+  const diferencia = totalComprasMes - totalServiciosMes;
+
+  const eventos = [
+    ...compras.map(c=>({...c, _tipo:'compra'})),
+    ...servicios.map(s=>({...s, _tipo:'servicio'}))
+  ].sort((a,b)=> b.fecha.localeCompare(a.fecha));
+
+  const filas = eventos.map(e=>{
+    if(e._tipo==='compra'){
+      const total = e.costo + (e.flete||0);
+      return `<div class="rubro-row"><span>${e.fecha} · ${e.producto}${e.flete?' (+flete '+fmtMoney(e.flete)+')':''}</span><b>${fmtMoney(total)}</b></div>`;
+    }
+    return `<div class="rubro-row"><span>${e.fecha} · ${e.descripcion}</span><b style="color:var(--green)">-${fmtMoney(e.monto)}</b></div>`;
+  }).join('');
+
+  document.getElementById('provDetailBody').innerHTML = `
+    <div class="card">
+      <div class="muted">Este mes — comprado</div><div style="font-weight:800;font-size:18px;margin-bottom:6px;">${fmtMoney(totalComprasMes)}</div>
+      <div class="muted">Este mes — servicios prestados</div><div style="font-weight:800;font-size:18px;margin-bottom:6px;">${fmtMoney(totalServiciosMes)}</div>
+      <div class="muted">Diferencia</div>
+      <div style="font-weight:800;font-size:20px;color:${diferencia>0?'var(--red)':'var(--green)'}">${diferencia>0?'Debo '+fmtMoney(diferencia):(diferencia<0?'A mi favor '+fmtMoney(-diferencia):'Al día')}</div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:14px;">
+      <button class="btn wood" style="flex:1;" onclick="abrirCompraProveedor()">+ Compra</button>
+      <button class="btn ghost" style="flex:1;" onclick="abrirServicioProveedor()">+ Servicio</button>
+    </div>
+    <div class="card"><h3>Movimientos</h3>${filas || '<div class="muted">Sin movimientos todavía.</div>'}</div>
+  `;
+}
+function abrirCompraProveedor(){
+  document.getElementById('cpProducto').value=''; document.getElementById('cpCosto').value='';
+  document.getElementById('cpTieneFlete').checked=false; document.getElementById('cpFlete').value='';
+  document.getElementById('cpFleteField').style.display='none';
+  openOverlay('ov-compra-proveedor');
+}
+function guardarCompraProveedor(){
+  const producto = document.getElementById('cpProducto').value.trim();
+  const costo = Number(document.getElementById('cpCosto').value||0);
+  const tieneFlete = document.getElementById('cpTieneFlete').checked;
+  const flete = tieneFlete ? Number(document.getElementById('cpFlete').value||0) : 0;
+  if(!producto || !costo){ toast('Completá producto y costo'); return; }
+  state.comprasProveedor.push({id:uid(), proveedorId:activeProveedorId, producto, costo, flete, fecha:todayStr()});
+  saveState(); closeOverlay('ov-compra-proveedor');
+  renderProveedorDetailBody(); renderMas();
+  toast('Compra guardada');
+}
+function abrirServicioProveedor(){
+  document.getElementById('spDescripcion').value=''; document.getElementById('spMonto').value='';
+  openOverlay('ov-servicio-proveedor');
+}
+function guardarServicioProveedor(){
+  const descripcion = document.getElementById('spDescripcion').value.trim();
+  const monto = Number(document.getElementById('spMonto').value||0);
+  if(!descripcion || !monto){ toast('Completá descripción y monto'); return; }
+  state.serviciosProveedor.push({id:uid(), proveedorId:activeProveedorId, descripcion, monto, fecha:todayStr()});
+  saveState(); closeOverlay('ov-servicio-proveedor');
+  renderProveedorDetailBody(); renderMas();
+  toast('Servicio guardado');
 }
 
 /* ---------- Render general ---------- */
