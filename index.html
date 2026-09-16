@@ -632,7 +632,7 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
     <div class="sheet-wrap">
       <button class="close-x" onclick="closeOverlay('ov-reagendar-item')">✕</button>
       <h2>Reagendar</h2>
-      <div class="field"><label>Nueva fecha</label><input type="date" id="reagendarItemFecha"></div>
+      <div class="field"><label>Nueva fecha</label><input type="date" id="reagendarItemFecha" onchange="confirmarReagendarItem()"></div>
       <button class="btn wood block" onclick="confirmarReagendarItem()">Guardar nueva fecha</button>
     </div>
   </div>
@@ -670,12 +670,12 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
 
       <div id="modoReagendar">
         <div class="helper">Reagenda únicamente este compromiso de pago.</div>
-        <div class="field"><label>Nueva fecha</label><input type="date" id="reprogFecha"></div>
+        <div class="field"><label>Nueva fecha</label><input type="date" id="reprogFecha" onchange="reprogramarPago()"></div>
       </div>
 
       <div id="modoMover" style="display:none;">
         <div class="helper">Mueve los próximos pagos del cliente a partir de la fecha seleccionada.</div>
-        <div class="field"><label>Inicia el</label><input type="date" id="moverFecha"></div>
+        <div class="field"><label>Inicia el</label><input type="date" id="moverFecha" onchange="reprogramarPago()"></div>
       </div>
 
       <div id="modoEsquema" style="display:none;">
@@ -864,11 +864,23 @@ auth.onAuthStateChanged(user=>{
     document.getElementById('app').style.display = 'block';
     document.getElementById('userName').textContent = user.email;
     attachDataListener();
+    manejarContenidoCompartido();
   } else {
     document.getElementById('loginScreen').style.display = 'flex';
     document.getElementById('app').style.display = 'none';
   }
 });
+function manejarContenidoCompartido(){
+  const params = new URLSearchParams(window.location.search);
+  const texto = params.get('shared_text') || params.get('shared_url') || params.get('shared_title');
+  if(!texto) return;
+  history.replaceState({}, '', window.location.pathname);
+  setTimeout(()=>{
+    openFleteRapido();
+    document.getElementById('fDireccion').value = texto;
+    toast('Ubicación recibida — completá el nombre y el monto');
+  }, 300);
+}
 
 function seedDemoData(){
   state.clients = [];
@@ -1321,8 +1333,8 @@ function openReprogramar(clientId){
   document.getElementById('reprogClientName').textContent = c.nombre + ' · ' + c.code;
   document.getElementById('reprogOriginal').textContent = c.fechaPago || '—';
   document.getElementById('reprogMontoActual').textContent = fmtMoney(c.montoCuota);
-  document.getElementById('reprogFecha').value = c.fechaPago || '';
-  document.getElementById('moverFecha').value = c.fechaPago || '';
+  document.getElementById('reprogFecha').value = selectedAgendaDate || c.fechaPago || todayStr();
+  document.getElementById('moverFecha').value = selectedAgendaDate || c.fechaPago || todayStr();
   document.getElementById('esqMonto').value = c.montoCuota || '';
   document.getElementById('esqFecha').value = c.fechaPago || '';
   document.getElementById('esqFrecuencia').value = c.frecuencia || 'mensual';
@@ -1644,17 +1656,16 @@ function itemToHTML(item, draggable, atrasado){
     <div class="visit-main">
       ${avisoAtrasado}
       <div class="visit-top">
-        <div class="visit-name">${c.nombre}</div>
+        <div class="visit-name" style="cursor:pointer;text-decoration:underline;text-decoration-color:var(--line);" onclick="openClientDetail('${c.id}')">${c.nombre}</div>
         <span class="tag ${tagClass}">${tagLabel}${v.resultado==='sin_pago'?' · sin pago':''}</span>
       </div>
       <div class="visit-meta">${v.hora ? '⏰ '+v.hora+' · ' : ''}${metaLine} · ${v.km||0} km</div>
       <div class="visit-actions">
-        <button class="btn ghost" onclick="openClientDetail('${c.id}')">Ver ficha</button>
-        ${c.loc ? `<button class="btn ghost" onclick="window.open('https://maps.google.com/?q=${c.loc}','_blank')">Ver en mapa</button>` : ''}
-        ${c.type==='muebles' && c.tel ? `<button class="btn green" onclick="sendReminderWA('${c.id}')">Avisar: hoy vence</button>` : ''}
-        ${c.type==='muebles' && restante>0 && !v.done ? `<button class="btn ghost" onclick="openReprogramar('${c.id}')">Sin pago</button>` : ''}
-        <button class="btn ghost" onclick="openReagendarItem('${v.id}','visit')">🗓️ Mover de día</button>
-        <button class="btn ghost" onclick="deleteVisit('${v.id}')">🗑️</button>
+        ${c.loc ? `<button class="btn ghost" title="Ver en mapa" onclick="window.open('https://maps.google.com/?q=${c.loc}','_blank')">🗺️</button>` : ''}
+        ${c.type==='muebles' && c.tel ? `<button class="btn green" title="Avisar: hoy vence" onclick="sendReminderWA('${c.id}')">🔔</button>` : ''}
+        ${c.type==='muebles' && restante>0 && !v.done ? `<button class="btn ghost" title="Sin pago" onclick="openReprogramar('${c.id}')">🚫</button>` : ''}
+        <button class="btn ghost" title="Reagendar" onclick="openReagendarItem('${v.id}','visit')">🗓️</button>
+        <button class="btn ghost" title="Borrar" onclick="deleteVisit('${v.id}')">🗑️</button>
       </div>
     </div>
   </div>`;
