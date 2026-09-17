@@ -406,6 +406,7 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
     <div class="sheet-wrap">
       <button class="close-x" onclick="closeOverlay('ov-editar-cliente')">✕</button>
       <h2>Editar datos</h2>
+      <div class="field"><label>Código</label><input id="ecCodigo"></div>
       <div class="field"><label>Nombre</label><input id="ecNombre"></div>
       <div id="ecCamposMuebles">
         <div class="field"><label>N° de DNI</label><input id="ecDni"></div>
@@ -789,6 +790,13 @@ let activeDetailClientId = null;
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 function fmtMoney(n){ return '$' + Math.round(n||0).toLocaleString('es-AR'); }
 function uid(){ return Math.random().toString(36).slice(2,9); }
+function siguienteCodigo(prefix){
+  const numeros = state.clients
+    .filter(c=> c.code && c.code.startsWith(prefix+'-'))
+    .map(c=> parseInt(c.code.split('-')[1], 10) || 0);
+  const max = numeros.length ? Math.max(...numeros) : 0;
+  return prefix + '-' + String(max+1).padStart(4,'0');
+}
 function toast(msg){
   const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
   setTimeout(()=>t.classList.remove('show'),1800);
@@ -845,13 +853,12 @@ function importarClientes(){
 
       listaClientes.forEach(d=>{
         const prefix = d.type==='pintura' ? 'PT' : 'MB';
-        const code = prefix+'-'+String(state.nextCode).padStart(4,'0');
+        const code = siguienteCodigo(prefix);
         const nuevoId = uid();
         const origId = d._origId;
         const clienteFinal = Object.assign({}, d, {id:nuevoId, code});
         delete clienteFinal._origId;
         state.clients.push(clienteFinal);
-        state.nextCode++;
         agregados++;
         if(origId) idMap[origId] = nuevoId;
       });
@@ -995,7 +1002,7 @@ function setClientType(t){
   document.getElementById('fieldsMuebles').style.display = t==='muebles' ? 'block':'none';
   document.getElementById('fieldsPintura').style.display = t==='pintura' ? 'block':'none';
   const prefix = t==='muebles'?'MB':'PT';
-  document.getElementById('cCode').value = prefix + '-' + String(state.nextCode).padStart(4,'0');
+  document.getElementById('cCode').value = siguienteCodigo(prefix);
 }
 document.addEventListener('DOMContentLoaded', ()=> setClientType('muebles'));
 
@@ -1021,7 +1028,7 @@ function saveClient(){
   const nombre = document.getElementById('cNombre').value.trim();
   if(!nombre){ toast('Falta el nombre'); return; }
   const prefix = currentClientType==='muebles'?'MB':'PT';
-  const code = prefix+'-'+String(state.nextCode).padStart(4,'0');
+  const code = siguienteCodigo(prefix);
   let client = {id:uid(), code, type:currentClientType, nombre, fechaCreacion: todayStr()};
 
   if(currentClientType==='muebles'){
@@ -1049,7 +1056,6 @@ function saveClient(){
   }
 
   state.clients.push(client);
-  state.nextCode++;
   if(currentClientType==='muebles' && client.cuotas>0 && client.montoCuota>0){
     state.sales.push({id:uid(), clientId:client.id, monto: client.cuotas*client.montoCuota, fecha: client.fechaCreacion, nota: client.producto||'Venta a crédito'});
   }
@@ -1200,6 +1206,7 @@ function eliminarTransaccionCliente(tipo, id){
 function abrirEditarCliente(id){
   closeOverlay('ov-detail');
   const c = state.clients.find(x=>x.id===id);
+  document.getElementById('ecCodigo').value = c.code || '';
   document.getElementById('ecNombre').value = c.nombre || '';
   document.getElementById('ecCamposMuebles').style.display = c.type==='muebles' ? 'block' : 'none';
   document.getElementById('ecCamposPintura').style.display = c.type==='pintura' ? 'block' : 'none';
@@ -1224,6 +1231,11 @@ function capturarUbicacionEdicion(){
 }
 function guardarEdicionCliente(){
   const c = state.clients.find(x=>x.id===activeDetailClientId);
+  const nuevoCodigo = document.getElementById('ecCodigo').value.trim();
+  if(!nuevoCodigo){ toast('El código no puede quedar vacío'); return; }
+  const yaExiste = state.clients.some(x=> x.id!==c.id && x.code===nuevoCodigo);
+  if(yaExiste){ toast('Ese código ya lo tiene otro cliente — elegí uno distinto'); return; }
+  c.code = nuevoCodigo;
   c.nombre = document.getElementById('ecNombre').value.trim() || c.nombre;
   if(c.type==='muebles'){
     c.dni = document.getElementById('ecDni').value.trim();
@@ -1362,11 +1374,10 @@ function generarPresupuestoRapidoPDF(){
 }
 function guardarPresupuestoComoCliente(){
   const datos = leerFormPresupuestoRapido();
-  const code = 'PT-'+String(state.nextCode).padStart(4,'0');
+  const code = siguienteCodigo('PT');
   state.clients.push({id:uid(), code, type:'pintura', nombre:datos.nombre, tel:datos.tel,
     descripcion:datos.descripcion, monto:datos.monto, fechaEntrega:datos.fechaEntrega,
     fechaSeguimiento:'', estado:'presupuestado', fechaCreacion: todayStr()});
-  state.nextCode++;
   saveState(); renderAll();
   closeOverlay('ov-presupuesto-rapido');
   toast('Guardado como cliente '+code);
