@@ -1178,6 +1178,7 @@ function eliminarTransaccionCliente(tipo, id){
   toast('Movimiento borrado');
 }
 function abrirEditarCliente(id){
+  closeOverlay('ov-detail');
   const c = state.clients.find(x=>x.id===id);
   document.getElementById('ecNombre').value = c.nombre || '';
   document.getElementById('ecCamposMuebles').style.display = c.type==='muebles' ? 'block' : 'none';
