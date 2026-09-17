@@ -279,12 +279,9 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
         <div class="sub" id="cajaBalanceSub">Vendido − gastado</div>
       </div>
       <div class="kpi-row">
-        <div class="kpi"><div class="n" id="kpiVendido">$0</div><div class="l">Total vendido</div></div>
-        <div class="kpi green"><div class="n" id="kpiCobrado">$0</div><div class="l">Total cobrado</div></div>
-        <div class="kpi red"><div class="n" id="kpiGastado">$0</div><div class="l">Total gastado</div></div>
-        <div class="kpi"><div class="n" id="kpiCombustible">$0</div><div class="l">Combustible</div></div>
-        <div class="kpi red"><div class="n" id="kpiVencido">$0</div><div class="l">Vencido (sin cobrar)</div></div>
-        <div class="kpi"><div class="n" id="kpiSemana">$0</div><div class="l">Por cobrar esta semana</div></div>
+        <div class="kpi" style="cursor:pointer;" onclick="abrirDetalleCaja('vendido')"><div class="n" id="kpiVendido">$0</div><div class="l">Total vendido ›</div></div>
+        <div class="kpi green" style="cursor:pointer;" onclick="abrirDetalleCaja('cobrado')"><div class="n" id="kpiCobrado">$0</div><div class="l">Total cobrado ›</div></div>
+        <div class="kpi red" style="cursor:pointer;" onclick="abrirDetalleCaja('gastos')"><div class="n" id="kpiGastado">$0</div><div class="l">Total gastado ›</div></div>
       </div>
       <div class="card">
         <h3>Cumplimiento del mes</h3>
@@ -320,6 +317,10 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
       <div class="card">
         <h3>Ventas y cobros — últimos 5 meses</h3>
         <div id="scoreMeses"></div>
+      </div>
+      <div class="card">
+        <h3>Gastos por rubro — este mes</h3>
+        <div id="gastosPorRubroMes"></div>
       </div>
       <div class="card">
         <h3>Clientes para renovar</h3>
@@ -384,6 +385,22 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
 
 <!-- MODAL: nuevo cliente -->
 <!-- MODAL: editar datos de cliente -->
+<!-- MODAL: detalle de caja (vendido/cobrado/gastos) -->
+<div class="overlay" id="ov-detalle-caja">
+  <div class="sheet">
+    <div class="sheet-wrap">
+      <button class="close-x" onclick="closeOverlay('ov-detalle-caja')">✕</button>
+      <h2 id="detalleCajaTitulo">Detalle</h2>
+      <div style="display:flex;gap:8px;margin-bottom:14px;">
+        <div class="field" style="flex:1;margin-bottom:0;"><label>Desde</label><input type="date" id="detalleCajaDesde" onchange="renderDetalleCaja()"></div>
+        <div class="field" style="flex:1;margin-bottom:0;"><label>Hasta</label><input type="date" id="detalleCajaHasta" onchange="renderDetalleCaja()"></div>
+      </div>
+      <div style="font-weight:800;font-size:20px;margin-bottom:12px;" id="detalleCajaTotal">$0</div>
+      <div id="detalleCajaLista"></div>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="ov-editar-cliente">
   <div class="sheet">
     <div class="sheet-wrap">
@@ -1033,6 +1050,9 @@ function saveClient(){
 
   state.clients.push(client);
   state.nextCode++;
+  if(currentClientType==='muebles' && client.cuotas>0 && client.montoCuota>0){
+    state.sales.push({id:uid(), clientId:client.id, monto: client.cuotas*client.montoCuota, fecha: client.fechaCreacion, nota: client.producto||'Venta a crédito'});
+  }
   tempLoc = null; tempPhoto = false;
   saveState();
   closeOverlay('ov-client');
@@ -1915,27 +1935,59 @@ function guardarGasto(){
 
 /* ---------- Caja ---------- */
 const RUBRO_COLORS = {Personales:'#A63A2E', Empleado:'#3D5A73', Insumos:'#A9642F', Combustible:'#4B6B4E'};
+function calcularVendido(desde, hasta){
+  return state.sales.filter(s=> s.clientId && s.fecha>=desde && s.fecha<=hasta && (state.clients.find(c=>c.id===s.clientId)||{}).type==='muebles')
+    .map(s=>({fecha:s.fecha, nombre:(state.clients.find(c=>c.id===s.clientId)||{}).nombre||'Cliente', monto:s.monto}));
+}
+function calcularCobrado(desde, hasta){
+  const pagos = state.payments.filter(p=>p.fecha>=desde && p.fecha<=hasta)
+    .map(p=>({fecha:p.fecha, nombre:(state.clients.find(c=>c.id===p.clientId)||{}).nombre||'Cliente', monto:p.monto}));
+  const ventasCash = state.sales.filter(s=> !s.clientId && s.fecha>=desde && s.fecha<=hasta)
+    .map(s=>({fecha:s.fecha, nombre:s.nota||'Venta', monto:s.monto}));
+  return [...pagos, ...ventasCash];
+}
+function calcularGastos(desde, hasta){
+  return state.expenses.filter(e=>e.fecha>=desde && e.fecha<=hasta)
+    .map(e=>({fecha:e.fecha, nombre:e.rubro+(e.subcategoria?' · '+e.subcategoria:'')+(e.nota?' ('+e.nota+')':''), monto:e.monto}));
+}
+let detalleCajaTipo = null;
+function abrirDetalleCaja(tipo){
+  detalleCajaTipo = tipo;
+  document.getElementById('detalleCajaDesde').value = todayStr();
+  document.getElementById('detalleCajaHasta').value = todayStr();
+  const titulos = {vendido:'Detalle de vendido (muebles a crédito)', cobrado:'Detalle de cobrado', gastos:'Detalle de gastos'};
+  document.getElementById('detalleCajaTitulo').textContent = titulos[tipo];
+  renderDetalleCaja();
+  openOverlay('ov-detalle-caja');
+}
+function renderDetalleCaja(){
+  const desde = document.getElementById('detalleCajaDesde').value || todayStr();
+  const hasta = document.getElementById('detalleCajaHasta').value || todayStr();
+  let items = [];
+  if(detalleCajaTipo==='vendido') items = calcularVendido(desde,hasta);
+  if(detalleCajaTipo==='cobrado') items = calcularCobrado(desde,hasta);
+  if(detalleCajaTipo==='gastos') items = calcularGastos(desde,hasta);
+  items.sort((a,b)=> b.fecha.localeCompare(a.fecha));
+  const total = items.reduce((s,x)=>s+x.monto,0);
+  document.getElementById('detalleCajaTotal').textContent = fmtMoney(total);
+  document.getElementById('detalleCajaLista').innerHTML = items.length ? items.map(it=>
+    `<div class="rubro-row"><span>${it.fecha} · ${it.nombre}</span><b>${fmtMoney(it.monto)}</b></div>`
+  ).join('') : `<div class="muted">Sin movimientos en ese rango.</div>`;
+}
 function renderCaja(){
   const t = todayStr();
-  const cobradoHoy = state.payments.filter(p=>p.fecha===t).reduce((s,p)=>s+p.monto,0);
-  const vendidoHoy = state.sales.filter(s=>s.fecha===t).reduce((s,x)=>s+x.monto,0) + cobradoHoy;
-  const gastadoHoy = state.expenses.filter(e=>e.fecha===t).reduce((s,e)=>s+e.monto,0);
-  const combustibleHoy = state.expenses.filter(e=>e.fecha===t && e.rubro==='Combustible').reduce((s,e)=>s+e.monto,0);
-  const balance = vendidoHoy - gastadoHoy;
+  const vendidoHoy = calcularVendido(t,t).reduce((s,x)=>s+x.monto,0);
+  const cobradoHoy = calcularCobrado(t,t).reduce((s,x)=>s+x.monto,0);
+  const gastadoHoy = calcularGastos(t,t).reduce((s,x)=>s+x.monto,0);
+  const balance = cobradoHoy - gastadoHoy;
 
   document.getElementById('cajaBalance').textContent = fmtMoney(balance);
+  document.getElementById('cajaBalanceSub').textContent = 'Cobrado − gastado';
   document.getElementById('kpiVendido').textContent = fmtMoney(vendidoHoy);
   document.getElementById('kpiCobrado').textContent = fmtMoney(cobradoHoy);
   document.getElementById('kpiGastado').textContent = fmtMoney(gastadoHoy);
-  document.getElementById('kpiCombustible').textContent = fmtMoney(combustibleHoy);
 
   const pendientesMuebles = state.clients.filter(c=>c.type==='muebles' && (c.cuotas-c.cuotasPagadas)>0);
-  const vencidoTotal = pendientesMuebles.filter(c=>diasHasta(c.fechaPago)<0)
-    .reduce((s,c)=> s + (c.cuotas-c.cuotasPagadas)*c.montoCuota, 0);
-  const semanaTotal = pendientesMuebles.filter(c=>{ const d=diasHasta(c.fechaPago); return d>=0 && d<=7; })
-    .reduce((s,c)=> s + c.montoCuota, 0);
-  document.getElementById('kpiVencido').textContent = fmtMoney(vencidoTotal);
-  document.getElementById('kpiSemana').textContent = fmtMoney(semanaTotal);
 
   const byRubro = {};
   state.expenses.filter(e=>e.fecha===t).forEach(e=>{ byRubro[e.rubro]=(byRubro[e.rubro]||0)+e.monto; });
@@ -2061,6 +2113,19 @@ function renderBalance(){
     </div>`;
   });
   document.getElementById('scoreMeses').innerHTML = rows.join('');
+
+  const mesActualBal = todayStr().slice(0,7);
+  const gastosMes = state.expenses.filter(e=>e.fecha.startsWith(mesActualBal));
+  const porRubro = {};
+  gastosMes.forEach(e=>{
+    const clave = e.rubro==='Personales' && e.subcategoria ? `Personales · ${e.subcategoria}` : e.rubro;
+    porRubro[clave] = (porRubro[clave]||0) + e.monto;
+  });
+  const clavesRubro = Object.keys(porRubro);
+  document.getElementById('gastosPorRubroMes').innerHTML = clavesRubro.length ? clavesRubro.map(k=>{
+    const colorBase = RUBRO_COLORS[k.split(' · ')[0]] || '#999';
+    return `<div class="rubro-row"><span><span class="dot" style="background:${colorBase}"></span>${k}</span><b>${fmtMoney(porRubro[k])}</b></div>`;
+  }).join('') : `<div class="muted">Sin gastos cargados este mes.</div>`;
 
   const buenosPagadores = state.clients.filter(c=>c.type==='muebles' && c.cuotas>0 && (c.cuotas-c.cuotasPagadas)<=2 && (c.cuotas-c.cuotasPagadas)>0);
   document.getElementById('renovarList').innerHTML = buenosPagadores.length ? buenosPagadores.map(c=>`
