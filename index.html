@@ -1128,15 +1128,26 @@ function renderHistorialCliente(clientId){
     return `<div class="card"><h3>Transacciones</h3><div class="muted">Todavía no hay movimientos para este cliente.</div></div>`;
   }
   const filas = eventos.map(e=>{
+    const btnBorrar = `<button class="btn ghost" style="padding:4px 8px;font-size:11px;margin-left:8px;" onclick="eliminarTransaccionCliente('${e.tipo}','${e.id}')">🗑️</button>`;
     if(e.tipo==='compra'){
-      return `<div class="rubro-row"><span>${e.fecha} · ${e.nota||'Compra'}</span><span style="text-align:right;"><b>${fmtMoney(e.monto)}</b><br><span class="muted" style="font-size:11px;">saldo ${fmtMoney(e._saldo)}</span></span></div>`;
+      return `<div class="rubro-row"><span>${e.fecha} · ${e.nota||'Compra'}</span><span style="text-align:right;display:flex;align-items:center;"><span><b>${fmtMoney(e.monto)}</b><br><span class="muted" style="font-size:11px;">saldo ${fmtMoney(e._saldo)}</span></span>${btnBorrar}</span></div>`;
     }
     if(e.tipo==='pago'){
-      return `<div class="rubro-row"><span>${e.fecha} · Pago (${e.metodo})</span><span style="text-align:right;"><b style="color:var(--green)">-${fmtMoney(e.monto)}</b><br><span class="muted" style="font-size:11px;">saldo ${fmtMoney(e._saldo)}</span></span></div>`;
+      return `<div class="rubro-row"><span>${e.fecha} · Pago (${e.metodo})</span><span style="text-align:right;display:flex;align-items:center;"><span><b style="color:var(--green)">-${fmtMoney(e.monto)}</b><br><span class="muted" style="font-size:11px;">saldo ${fmtMoney(e._saldo)}</span></span>${btnBorrar}</span></div>`;
     }
-    return `<div class="rubro-row"><span>${e.fecha} · Reagendar fecha</span><span style="text-align:right;"><span class="muted" style="font-size:12px;">${e.fechaAnterior||'—'} → ${e.fechaNueva}</span></span></div>`;
+    return `<div class="rubro-row"><span>${e.fecha} · Reagendar fecha</span><span style="text-align:right;display:flex;align-items:center;"><span class="muted" style="font-size:12px;">${e.fechaAnterior||'—'} → ${e.fechaNueva}</span>${btnBorrar}</span></div>`;
   }).join('');
   return `<div class="card"><h3>Transacciones</h3>${filas}</div>`;
+}
+function eliminarTransaccionCliente(tipo, id){
+  if(!confirm('¿Borrar este movimiento? Si era un pago o compra, puede que también quieras ajustar el plan con "Reagenda".')) return;
+  if(tipo==='compra') state.sales = state.sales.filter(x=>x.id!==id);
+  if(tipo==='pago') state.payments = state.payments.filter(x=>x.id!==id);
+  if(tipo==='reagenda') state.reprogramaciones = state.reprogramaciones.filter(x=>x.id!==id);
+  saveState();
+  renderAll();
+  openClientDetail(activeDetailClientId);
+  toast('Movimiento borrado');
 }
 function openClientDetail(id){
   const c = state.clients.find(x=>x.id===id);
@@ -1153,8 +1164,9 @@ function openClientDetail(id){
       </div>
       <div class="card" style="display:flex;justify-content:space-between;align-items:center;">
         <div><div class="muted">Agendado</div><div style="font-weight:800;font-size:19px;">${c.fechaPago||'—'}</div></div>
-        ${restante>0 ? `<button class="btn wood" onclick="closeOverlay('ov-detail'); openReprogramar('${c.id}');" style="border-radius:50%;width:42px;height:42px;font-size:18px;padding:0;">+</button>` : ''}
+        ${restante>0 ? `<button class="btn wood" onclick="closeOverlay('ov-detail'); openReprogramar('${c.id}');" style="border-radius:50%;width:42px;height:42px;font-size:18px;padding:0;">🗓️</button>` : ''}
       </div>
+      ${restante>0 ? `<button class="btn ghost block" style="margin-bottom:8px;" onclick="closeOverlay('ov-detail'); openReprogramar('${c.id}');">🗓️ Reagendar / reorganizar pagos</button>` : ''}
       <div class="card">
         <div class="muted">Saldo</div>
         <div style="font-weight:800;font-size:24px;">${restante>0 ? fmtMoney(restante) : 'Saldado ✓'}</div>
