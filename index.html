@@ -383,6 +383,32 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
 </div>
 
 <!-- MODAL: nuevo cliente -->
+<!-- MODAL: editar datos de cliente -->
+<div class="overlay" id="ov-editar-cliente">
+  <div class="sheet">
+    <div class="sheet-wrap">
+      <button class="close-x" onclick="closeOverlay('ov-editar-cliente')">✕</button>
+      <h2>Editar datos</h2>
+      <div class="field"><label>Nombre</label><input id="ecNombre"></div>
+      <div id="ecCamposMuebles">
+        <div class="field"><label>N° de DNI</label><input id="ecDni"></div>
+        <div class="field"><label>Teléfono</label><input id="ecTel"></div>
+        <div class="field"><label>Ubicación (lat,lng)</label>
+          <input id="ecLoc" placeholder="Ej: -27.47,-58.83">
+          <button class="btn ghost block" style="margin-top:8px;" onclick="capturarUbicacionEdicion()">📍 Captar mi ubicación actual</button>
+        </div>
+        <div class="field"><label>Producto</label><input id="ecProducto"></div>
+      </div>
+      <div id="ecCamposPintura" style="display:none;">
+        <div class="field"><label>Teléfono</label><input id="ecTelP"></div>
+        <div class="field"><label>Descripción del trabajo</label><textarea id="ecDesc" rows="2"></textarea></div>
+        <div class="field"><label>Fecha de entrega estimada</label><input type="date" id="ecFechaEntrega"></div>
+      </div>
+      <button class="btn wood block" onclick="guardarEdicionCliente()">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="ov-client">
   <div class="sheet">
     <div class="sheet-wrap">
@@ -1151,6 +1177,49 @@ function eliminarTransaccionCliente(tipo, id){
   openClientDetail(activeDetailClientId);
   toast('Movimiento borrado');
 }
+function abrirEditarCliente(id){
+  const c = state.clients.find(x=>x.id===id);
+  document.getElementById('ecNombre').value = c.nombre || '';
+  document.getElementById('ecCamposMuebles').style.display = c.type==='muebles' ? 'block' : 'none';
+  document.getElementById('ecCamposPintura').style.display = c.type==='pintura' ? 'block' : 'none';
+  if(c.type==='muebles'){
+    document.getElementById('ecDni').value = c.dni || '';
+    document.getElementById('ecTel').value = c.tel || '';
+    document.getElementById('ecLoc').value = c.loc || '';
+    document.getElementById('ecProducto').value = c.producto || '';
+  } else {
+    document.getElementById('ecTelP').value = c.tel || '';
+    document.getElementById('ecDesc').value = c.descripcion || '';
+    document.getElementById('ecFechaEntrega').value = c.fechaEntrega || '';
+  }
+  openOverlay('ov-editar-cliente');
+}
+function capturarUbicacionEdicion(){
+  if(!navigator.geolocation){ toast('Geolocalización no disponible'); return; }
+  navigator.geolocation.getCurrentPosition(pos=>{
+    document.getElementById('ecLoc').value = pos.coords.latitude.toFixed(4)+','+pos.coords.longitude.toFixed(4);
+    toast('Ubicación captada');
+  }, ()=> toast('No se pudo obtener la ubicación'));
+}
+function guardarEdicionCliente(){
+  const c = state.clients.find(x=>x.id===activeDetailClientId);
+  c.nombre = document.getElementById('ecNombre').value.trim() || c.nombre;
+  if(c.type==='muebles'){
+    c.dni = document.getElementById('ecDni').value.trim();
+    c.tel = document.getElementById('ecTel').value.trim();
+    c.loc = document.getElementById('ecLoc').value.trim();
+    c.producto = document.getElementById('ecProducto').value.trim();
+  } else {
+    c.tel = document.getElementById('ecTelP').value.trim();
+    c.descripcion = document.getElementById('ecDesc').value.trim();
+    c.fechaEntrega = document.getElementById('ecFechaEntrega').value;
+  }
+  saveState();
+  renderAll();
+  closeOverlay('ov-editar-cliente');
+  openClientDetail(c.id);
+  toast('Datos actualizados');
+}
 function openClientDetail(id){
   const c = state.clients.find(x=>x.id===id);
   activeDetailClientId = id;
@@ -1169,6 +1238,7 @@ function openClientDetail(id){
         ${restante>0 ? `<button class="btn wood" onclick="closeOverlay('ov-detail'); openReprogramar('${c.id}');" style="border-radius:50%;width:42px;height:42px;font-size:18px;padding:0;">🗓️</button>` : ''}
       </div>
       ${restante>0 ? `<button class="btn ghost block" style="margin-bottom:8px;" onclick="closeOverlay('ov-detail'); openReprogramar('${c.id}');">🗓️ Reagendar / reorganizar pagos</button>` : ''}
+      <button class="btn ghost block" style="margin-bottom:8px;" onclick="abrirEditarCliente('${c.id}')">✏️ Editar datos</button>
       <div class="card">
         <div class="muted">Saldo</div>
         <div style="font-weight:800;font-size:24px;">${restante>0 ? fmtMoney(restante) : 'Saldado ✓'}</div>
@@ -1196,6 +1266,7 @@ function openClientDetail(id){
         ${c.fechaSeguimiento ? `<div class="muted" style="margin-top:8px;">Próximo seguimiento</div><div style="font-weight:700;">${c.fechaSeguimiento}</div>` : ''}
       </div>
       <button class="btn ghost block" style="margin-bottom:8px;" onclick="generarPresupuestoPDF('${c.id}')">📄 Generar PDF del presupuesto</button>
+      <button class="btn ghost block" style="margin-bottom:8px;" onclick="abrirEditarCliente('${c.id}')">✏️ Editar datos</button>
       ${c.estado!=='cobrado' ? `<button class="btn ghost block" style="margin-bottom:8px;" onclick="marcarAceptado('${c.id}')">Marcar presupuesto aceptado</button>` : ''}
       ${c.estado!=='cobrado' ? `<button class="btn wood block" onclick="openPagoPintura()">Registrar cobro</button>` : ''}
     `;
