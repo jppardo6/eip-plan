@@ -256,6 +256,8 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
       </div>
       <button class="btn wood block" onclick="verRutaCompleta()">🗺️ Ver ruta completa del día</button>
       <div style="height:8px;"></div>
+      <button class="btn ghost block" onclick="optimizarRutaPorUbicacion()">📍 Ordenar por mi ubicación actual</button>
+      <div style="height:8px;"></div>
       <div id="agendaList"></div>
       <div id="agendaCompletadas"></div>
     </section>
@@ -1544,6 +1546,68 @@ function setAgendaDate(d){
   selectedAgendaDate = d || todayStr();
   document.getElementById('agendaDateInput').value = selectedAgendaDate;
   renderAgenda();
+}
+function haversine(lat1, lon1, lat2, lon2){
+  const R = 6371;
+  const dLat = (lat2-lat1) * Math.PI/180;
+  const dLon = (lon2-lon1) * Math.PI/180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+function parseLoc(locStr){
+  if(!locStr) return null;
+  const partes = locStr.split(',').map(Number);
+  if(partes.length!==2 || isNaN(partes[0]) || isNaN(partes[1])) return null;
+  return {lat:partes[0], lng:partes[1]};
+}
+function optimizarRutaPorUbicacion(){
+  if(!navigator.geolocation){ toast('Tu celular no soporta ubicación'); return; }
+  toast('Buscando tu ubicación...');
+  navigator.geolocation.getCurrentPosition(pos=>{
+    const miUbicacion = {lat:pos.coords.latitude, lng:pos.coords.longitude};
+    const visitasDia = state.visits.filter(v=> (v.fecha||todayStr())===selectedAgendaDate && !v.done);
+
+    const conCoords = [], sinCoords = [];
+    visitasDia.forEach(v=>{
+      let loc = v.tipo==='flete' ? parseLoc(v.direccion) : parseLoc((state.clients.find(x=>x.id===v.clientId)||{}).loc);
+      if(loc) conCoords.push({v, loc}); else sinCoords.push(v);
+    });
+    if(conCoords.length===0){ toast('Ninguna visita de hoy tiene ubicación GPS cargada'); return; }
+
+    // Anclas: las que tienen horario fijo, ordenadas por hora
+    const anclas = conCoords.filter(x=>x.v.hora).sort((a,b)=>a.v.hora.localeCompare(b.v.hora));
+    const libres = conCoords.filter(x=>!x.v.hora);
+
+    // Ruta base: mi ubicación actual + las anclas en su orden de horario
+    let ruta = [{loc:miUbicacion, esInicio:true}, ...anclas];
+
+    // Inserción más barata: cada visita sin horario se mete donde menos distancia agregue
+    libres.forEach(item=>{
+      let mejorPos = 1, mejorCosto = Infinity;
+      for(let i=0; i<ruta.length-1; i++){
+        const a = ruta[i].loc, b = ruta[i+1].loc;
+        const costoActual = haversine(a.lat,a.lng,b.lat,b.lng);
+        const costoConInsercion = haversine(a.lat,a.lng,item.loc.lat,item.loc.lng) + haversine(item.loc.lat,item.loc.lng,b.lat,b.lng);
+        const costoExtra = costoConInsercion - costoActual;
+        if(costoExtra < mejorCosto){ mejorCosto = costoExtra; mejorPos = i+1; }
+      }
+      // también evaluar agregarla al final
+      const ultimo = ruta[ruta.length-1].loc;
+      const costoFinal = haversine(ultimo.lat,ultimo.lng,item.loc.lat,item.loc.lng);
+      if(costoFinal < mejorCosto){ mejorPos = ruta.length; }
+      ruta.splice(mejorPos, 0, item);
+    });
+
+    let contador = 0;
+    ruta.forEach(item=>{ if(!item.esInicio) item.v.orden = contador++; });
+    sinCoords.forEach(v=>{ v.orden = contador++; });
+
+    saveState();
+    renderAgenda();
+    toast('Ruta reorganizada según tu ubicación y horarios fijos');
+  }, err=>{
+    toast('No pude obtener tu ubicación. Activá el GPS y dale permiso al navegador.');
+  });
 }
 function verRutaCompleta(){
   const visitasDia = state.visits.filter(v=> (v.fecha||todayStr())===selectedAgendaDate && !v.done);
