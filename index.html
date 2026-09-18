@@ -133,8 +133,15 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
   /* Clientes list */
   .search{
     width:100%;padding:11px 13px;border-radius:12px;border:1px solid var(--line);
-    background:var(--paper);font-size:14px;margin-bottom:10px;
+    background:var(--paper);color:var(--ink);font-size:14px;margin-bottom:10px;
   }
+  .search::placeholder{color:var(--ink-soft);}
+  /* Cualquier input/select suelto (fuera de .field) hereda mal el color del texto
+     en algunos navegadores/webviews y queda negro sobre fondo oscuro: forzamos contraste. */
+  input, select, textarea{color:var(--ink);}
+  input::placeholder, textarea::placeholder{color:var(--ink-soft);}
+  .field input, .field select, .field textarea{color:#20232A;}
+  .field input::placeholder, .field textarea::placeholder{color:#8A8D91;}
   .filters{display:flex;gap:8px;margin-bottom:12px;overflow-x:auto;}
   .chip{
     padding:7px 13px;border-radius:20px;font-size:12.5px;font-weight:600;white-space:nowrap;
@@ -418,6 +425,11 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
           <button class="btn ghost block" style="margin-top:8px;" onclick="capturarUbicacionEdicion()">📍 Captar mi ubicación actual</button>
         </div>
         <div class="field"><label>Producto</label><input id="ecProducto"></div>
+        <div class="field"><label>Monto de la cuota ($)</label><input id="ecMontoCuota" type="number"></div>
+        <div class="field"><label>Cantidad total de cuotas</label><input id="ecCuotas" type="number"></div>
+        <div class="field"><label>Cuotas ya pagadas (completas)</label><input id="ecCuotasPagadas" type="number"></div>
+        <div class="field"><label>Adelanto acumulado de la cuota actual ($)</label><input id="ecAcumuladoParcial" type="number" placeholder="0"></div>
+        <div class="muted" style="margin:-6px 0 12px;font-size:12px;">Usá estos 4 campos para corregir manualmente el saldo si se cargó mal un pago.</div>
       </div>
       <div id="ecCamposPintura" style="display:none;">
         <div class="field"><label>Teléfono</label><input id="ecTelP"></div>
@@ -1224,6 +1236,10 @@ function abrirEditarCliente(id){
     document.getElementById('ecTel').value = c.tel || '';
     document.getElementById('ecLoc').value = c.loc || '';
     document.getElementById('ecProducto').value = c.producto || '';
+    document.getElementById('ecMontoCuota').value = c.montoCuota || '';
+    document.getElementById('ecCuotas').value = c.cuotas || '';
+    document.getElementById('ecCuotasPagadas').value = c.cuotasPagadas || 0;
+    document.getElementById('ecAcumuladoParcial').value = c.acumuladoParcial || 0;
   } else {
     document.getElementById('ecTelP').value = c.tel || '';
     document.getElementById('ecDesc').value = c.descripcion || '';
@@ -1251,6 +1267,14 @@ function guardarEdicionCliente(){
     c.tel = document.getElementById('ecTel').value.trim();
     c.loc = document.getElementById('ecLoc').value.trim();
     c.producto = document.getElementById('ecProducto').value.trim();
+    const nuevoMontoCuota = Number(document.getElementById('ecMontoCuota').value||0);
+    const nuevoCuotas = Number(document.getElementById('ecCuotas').value||0);
+    const nuevoCuotasPagadas = Number(document.getElementById('ecCuotasPagadas').value||0);
+    const nuevoAcumulado = Number(document.getElementById('ecAcumuladoParcial').value||0);
+    if(nuevoMontoCuota>0) c.montoCuota = nuevoMontoCuota;
+    if(nuevoCuotas>0) c.cuotas = nuevoCuotas;
+    c.cuotasPagadas = Math.max(0, Math.min(c.cuotas, nuevoCuotasPagadas));
+    c.acumuladoParcial = Math.max(0, nuevoAcumulado);
   } else {
     c.tel = document.getElementById('ecTelP').value.trim();
     c.descripcion = document.getElementById('ecDesc').value.trim();
