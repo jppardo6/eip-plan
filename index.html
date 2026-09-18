@@ -445,7 +445,8 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
         <div class="field"><label>N° de DNI</label><input id="cDni" inputmode="numeric" placeholder="Ej: 30123456"></div>
         <div class="field"><label>Teléfono (WhatsApp)</label><input id="cTel" placeholder="Ej: 3794123456"></div>
         <div class="field"><label>Ubicación</label>
-          <button class="btn ghost block" onclick="captureLocation()">📍 Captar ubicación</button>
+          <input id="cLocManual" placeholder="Ej: -27.47,-58.83 (o pegá el link de WhatsApp)" oninput="tempLoc=this.value; document.getElementById('locStatus').textContent = this.value ? '📍 '+this.value : 'Sin capturar';">
+          <button class="btn ghost block" style="margin-top:8px;" onclick="captureLocation()">📍 Captar mi ubicación actual</button>
           <div class="helper" id="locStatus">Sin capturar</div>
         </div>
         <div class="field"><label>Foto de la casa</label>
@@ -787,7 +788,11 @@ let selectedAgendaDate = null;
 let currentClientType = 'muebles';
 let activeDetailClientId = null;
 
-function todayStr(){ return new Date().toISOString().slice(0,10); }
+function todayStr(){
+  const d = new Date();
+  const local = new Date(d.getTime() - d.getTimezoneOffset()*60000);
+  return local.toISOString().slice(0,10);
+}
 function fmtMoney(n){ return '$' + Math.round(n||0).toLocaleString('es-AR'); }
 function uid(){ return Math.random().toString(36).slice(2,9); }
 function siguienteCodigo(prefix){
@@ -1013,6 +1018,7 @@ function captureLocation(){
       pos=>{ tempLoc = pos.coords.latitude.toFixed(4)+','+pos.coords.longitude.toFixed(4);
         document.getElementById('locStatus') && (document.getElementById('locStatus').textContent = '📍 '+tempLoc);
         document.getElementById('locStatusF') && (document.getElementById('locStatusF').textContent = '📍 '+tempLoc);
+        document.getElementById('cLocManual') && (document.getElementById('cLocManual').value = tempLoc);
         toast('Ubicación captada'); },
       ()=>{ tempLoc = 'no disponible'; toast('No se pudo obtener ubicación (permitilo en el navegador)'); }
     );
@@ -1068,7 +1074,7 @@ function saveClient(){
   renderAll();
 }
 function clearClientForm(){
-  ['cNombre','cDni','cTel','cProducto','cMontoCuota','cCuotas','cFechaPago','cTelP','pDesc','pMonto','pFecha','cTelF']
+  ['cNombre','cDni','cTel','cProducto','cMontoCuota','cCuotas','cFechaPago','cTelP','pDesc','pMonto','pFecha','cTelF','cLocManual']
     .forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   document.getElementById('locStatus') && (document.getElementById('locStatus').textContent='Sin capturar');
   document.getElementById('photoStatus') && (document.getElementById('photoStatus').textContent='Sin foto');
@@ -1902,7 +1908,7 @@ function onDragEndAgenda(){
 }
 
 /* ---------- Gastos / Combustible ---------- */
-function openExpense(){ actualizarCamposGasto(); openOverlay('ov-gasto'); }
+function openExpense(){ editingGastoId = null; document.getElementById('gastoMonto').value=''; document.getElementById('gastoNota').value=''; document.getElementById('gastoLitros').value=''; actualizarCamposGasto(); openOverlay('ov-gasto'); }
 function actualizarCamposGasto(){
   const rubro = document.getElementById('gastoRubro').value;
   document.getElementById('gastoLitrosField').style.display = rubro==='Combustible' ? 'block' : 'none';
@@ -1930,6 +1936,21 @@ function manejarSubcategoriaSelect(){
     }
   }
 }
+let editingGastoId = null;
+function editarGasto(id){
+  const g = state.expenses.find(x=>x.id===id);
+  if(!g) return;
+  editingGastoId = id;
+  document.getElementById('gastoRubro').value = g.rubro;
+  actualizarCamposGasto();
+  document.getElementById('gastoMonto').value = g.monto;
+  document.getElementById('gastoNota').value = g.nota || '';
+  if(g.rubro==='Personales' && g.subcategoria){
+    renderOpcionesSubcategoria();
+    document.getElementById('gastoSubcategoria').value = g.subcategoria;
+  }
+  openOverlay('ov-gasto');
+}
 function guardarGasto(){
   const rubro = document.getElementById('gastoRubro').value;
   const monto = Number(document.getElementById('gastoMonto').value||0);
@@ -1938,10 +1959,19 @@ function guardarGasto(){
   let nota = document.getElementById('gastoNota').value;
   if(!monto){ toast('Ingresá un monto'); return; }
   if(rubro==='Combustible' && litros){ nota = (nota ? nota+' · ' : '') + litros+' litros'; }
-  state.expenses.push({id:uid(), rubro, subcategoria, monto, nota, fecha:todayStr()});
+  if(editingGastoId){
+    const g = state.expenses.find(x=>x.id===editingGastoId);
+    if(g){ g.rubro=rubro; g.subcategoria=subcategoria; g.monto=monto; g.nota=nota; }
+    editingGastoId = null;
+    toast('Gasto actualizado');
+  } else {
+    state.expenses.push({id:uid(), rubro, subcategoria, monto, nota, fecha:todayStr()});
+    toast('Gasto guardado');
+  }
   saveState(); closeOverlay('ov-gasto');
   document.getElementById('gastoMonto').value=''; document.getElementById('gastoNota').value=''; document.getElementById('gastoLitros').value='';
-  renderCaja(); toast('Gasto guardado');
+  renderCaja();
+  if(document.getElementById('ov-detalle-caja').classList.contains('show')) renderDetalleCaja();
 }
 
 /* ---------- Caja ---------- */
@@ -1959,7 +1989,7 @@ function calcularCobrado(desde, hasta){
 }
 function calcularGastos(desde, hasta){
   return state.expenses.filter(e=>e.fecha>=desde && e.fecha<=hasta)
-    .map(e=>({fecha:e.fecha, nombre:e.rubro+(e.subcategoria?' · '+e.subcategoria:'')+(e.nota?' ('+e.nota+')':''), monto:e.monto}));
+    .map(e=>({id:e.id, fecha:e.fecha, nombre:e.rubro+(e.subcategoria?' · '+e.subcategoria:'')+(e.nota?' ('+e.nota+')':''), monto:e.monto}));
 }
 let detalleCajaTipo = null;
 function abrirDetalleCaja(tipo){
@@ -1981,9 +2011,20 @@ function renderDetalleCaja(){
   items.sort((a,b)=> b.fecha.localeCompare(a.fecha));
   const total = items.reduce((s,x)=>s+x.monto,0);
   document.getElementById('detalleCajaTotal').textContent = fmtMoney(total);
-  document.getElementById('detalleCajaLista').innerHTML = items.length ? items.map(it=>
-    `<div class="rubro-row"><span>${it.fecha} · ${it.nombre}</span><b>${fmtMoney(it.monto)}</b></div>`
-  ).join('') : `<div class="muted">Sin movimientos en ese rango.</div>`;
+  document.getElementById('detalleCajaLista').innerHTML = items.length ? items.map(it=>{
+    const acciones = detalleCajaTipo==='gastos' ? `
+      <button class="btn ghost" style="padding:4px 8px;font-size:11px;margin-left:6px;" onclick="editarGasto('${it.id}')">✏️</button>
+      <button class="btn ghost" style="padding:4px 8px;font-size:11px;margin-left:4px;" onclick="borrarGastoDesdeDetalle('${it.id}')">🗑️</button>` : '';
+    return `<div class="rubro-row"><span>${it.fecha} · ${it.nombre}</span><span style="display:flex;align-items:center;"><b>${fmtMoney(it.monto)}</b>${acciones}</span></div>`;
+  }).join('') : `<div class="muted">Sin movimientos en ese rango.</div>`;
+}
+function borrarGastoDesdeDetalle(id){
+  if(!confirm('¿Borrar este gasto?')) return;
+  state.expenses = state.expenses.filter(x=>x.id!==id);
+  saveState();
+  renderDetalleCaja();
+  renderCaja();
+  toast('Gasto borrado');
 }
 function renderCaja(){
   const t = todayStr();
