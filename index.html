@@ -118,7 +118,9 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
   .tag.pintura{background:rgba(255,255,255,0.08);color:var(--ink);border:1px solid var(--line);}
   .tag.flete{background:var(--green-bg);color:var(--green);}
   .visit-meta{font-size:12px;color:var(--ink-soft);margin-top:3px;}
-  .visit-actions{display:flex;gap:8px;margin-top:8px;}
+  .visit-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;align-items:center;}
+  .visit-actions-icons{display:flex;gap:6px;margin-left:auto;}
+  .btn.icon{padding:7px 9px;font-size:14px;line-height:1;}
 
   .btn{
     border:none;border-radius:10px;padding:9px 13px;font-size:12.5px;font-weight:700;cursor:pointer;
@@ -1485,6 +1487,11 @@ function registrarPago(){
     const falta = Math.round(((c.montoCuota||0) - acumulado)*100)/100;
     msg = `Hola ${c.nombre}! Recibimos su pago parcial de ${fmtMoney(monto)} de la cuota número ${numeroCuota}. Llevás ${fmtMoney(acumulado)} de ${fmtMoney(c.montoCuota)}, faltan ${fmtMoney(falta)} para completarla. ¡Gracias!`;
   }
+  // Ya se registró algo hoy con este cliente (pago completo o parcial):
+  // se marca como resuelta la visita del día para que deje de aparecer
+  // en la lista de pendientes de "hoy".
+  const vHoy = state.visits.find(x=> x.clientId===c.id && !x.done && (x.fecha===selectedAgendaDate || x.fecha===todayStr()));
+  if(vHoy) vHoy.done = true;
   saveState();
   closeOverlay('ov-pago');
 
@@ -1502,9 +1509,11 @@ function registrarPago(){
 
 /* ---------- Visita sin pago / Reagenda ---------- */
 let activeReprogClientId = null;
+let activeReprogVisitId = null;
 let modoReprog = 'reagendar';
-function openReprogramar(clientId){
+function openReprogramar(clientId, visitId){
   activeReprogClientId = clientId;
+  activeReprogVisitId = visitId || null;
   const c = state.clients.find(x=>x.id===clientId);
   document.getElementById('reprogClientName').textContent = c.nombre + ' · ' + c.code;
   document.getElementById('reprogOriginal').textContent = c.fechaPago || '—';
@@ -1585,8 +1594,14 @@ function reprogramarPago(){
     c.puntosMalos = (c.puntosMalos||0) + 1;
   }
 
-  const v = state.visits.find(x=>x.clientId===c.id && !x.done);
+  // Marca como resuelta la visita puntual desde la que se abrió (si vino de la Agenda),
+  // y si no, la primera visita pendiente de ese cliente para hoy — así desaparece
+  // de la lista de "hoy" apenas se reagenda o se registra como sin pago.
+  const v = activeReprogVisitId
+    ? state.visits.find(x=>x.id===activeReprogVisitId)
+    : state.visits.find(x=>x.clientId===c.id && !x.done && (x.fecha===selectedAgendaDate || x.fecha===todayStr()));
   if(v){ v.done = true; v.resultado = 'sin_pago'; }
+  activeReprogVisitId = null;
   saveState();
   closeOverlay('ov-reprogramar');
   renderAll();
@@ -1877,7 +1892,9 @@ function itemToHTML(item, draggable, atrasado){
         <div class="visit-actions">
           ${esLink ? `<button class="btn ghost" onclick="window.open('${v.direccion}','_blank')">Ver ubicación</button>` : (v.direccion ? `<span class="muted">${v.direccion}</span>` : '')}
           <button class="btn ghost" onclick="openReagendarItem('${v.id}','visit')">🗓️ Reagendar</button>
-          <button class="btn ghost" onclick="deleteVisit('${v.id}')">🗑️</button>
+          <div class="visit-actions-icons">
+            <button class="btn ghost icon" title="Borrar" onclick="deleteVisit('${v.id}')">🗑️</button>
+          </div>
         </div>
       </div>
     </div>`;
@@ -1899,12 +1916,14 @@ function itemToHTML(item, draggable, atrasado){
       </div>
       <div class="visit-meta">${v.hora ? '⏰ '+v.hora+' · ' : ''}${metaLine} · ${v.km||0} km</div>
       <div class="visit-actions">
-        ${c.loc ? `<button class="btn ghost" title="Ver en mapa" onclick="window.open('https://maps.google.com/?q=${c.loc}','_blank')">🗺️</button>` : ''}
         ${c.type==='muebles' && restante>0 && !v.done ? `<button class="btn wood" title="Registrar pago" onclick="abrirPagoDesdeAgenda('${c.id}')">💰 Pagar</button>` : ''}
-        ${c.type==='muebles' && c.tel ? `<button class="btn green" title="Avisar: hoy vence" onclick="sendReminderWA('${c.id}')">🔔</button>` : ''}
-        ${c.type==='muebles' && restante>0 && !v.done ? `<button class="btn ghost" title="Sin pago" onclick="openReprogramar('${c.id}')">🚫</button>` : ''}
-        <button class="btn ghost" title="Reagendar" onclick="openReagendarItem('${v.id}','visit')">🗓️</button>
-        <button class="btn ghost" title="Borrar" onclick="deleteVisit('${v.id}')">🗑️</button>
+        ${c.type==='muebles' && restante>0 && !v.done ? `<button class="btn ghost" title="No pagó / reagendar" onclick="openReprogramar('${c.id}','${v.id}')">🚫 Sin pago</button>` : ''}
+        ${!(c.type==='muebles' && restante>0) ? `<button class="btn ghost" title="Reagendar" onclick="openReagendarItem('${v.id}','visit')">🗓️ Reagendar</button>` : ''}
+        <div class="visit-actions-icons">
+          ${c.loc ? `<button class="btn ghost icon" title="Ver en mapa" onclick="window.open('https://maps.google.com/?q=${c.loc}','_blank')">🗺️</button>` : ''}
+          ${c.type==='muebles' && c.tel ? `<button class="btn green icon" title="Avisar: hoy vence" onclick="sendReminderWA('${c.id}')">🔔</button>` : ''}
+          <button class="btn ghost icon" title="Borrar" onclick="deleteVisit('${v.id}')">🗑️</button>
+        </div>
       </div>
     </div>
   </div>`;
