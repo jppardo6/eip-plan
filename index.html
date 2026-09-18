@@ -493,6 +493,7 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
       <button class="close-x" onclick="closeOverlay('ov-pago')">✕</button>
       <h2>Registrar pago</h2>
       <div class="muted" style="margin-bottom:12px;">Pago de la cuota número <b id="pagoNumeroCuota">—</b>. Si te pagó menos, ajustá el monto — queda igual como pago parcial de esa cuota.</div>
+      <div class="muted" id="pagoParcialInfo" style="display:none;margin-bottom:12px;background:rgba(255,255,255,0.06);border:1px solid var(--line);border-radius:10px;padding:8px 10px;"></div>
       <div class="field"><label>Monto recibido ($)</label><input id="pagoMonto" type="number"></div>
       <div class="field"><label>Método</label>
         <select id="pagoMetodo"><option value="efectivo">Efectivo</option><option value="transferencia">Transferencia</option></select>
@@ -1413,11 +1414,40 @@ function sendReminderWA(clientId){
 }
 
 /* ---------- Pagos ---------- */
+function abrirPagoDesdeAgenda(clientId){
+  activeDetailClientId = clientId;
+  openPago();
+}
 function openPago(){
   const c = state.clients.find(x=>x.id===activeDetailClientId);
+  const acumulado = c.acumuladoParcial||0;
+  const falta = Math.max(0, Math.round(((c.montoCuota||0) - acumulado)*100)/100);
   document.getElementById('pagoNumeroCuota').textContent = (c.cuotasPagadas+1);
-  document.getElementById('pagoMonto').value = c.montoCuota;
+  document.getElementById('pagoMonto').value = falta || c.montoCuota;
+  const info = document.getElementById('pagoParcialInfo');
+  if(acumulado>0){
+    info.style.display = 'block';
+    info.innerHTML = `Ya llevás pagado <b>${fmtMoney(acumulado)}</b> de esta cuota. Faltan <b>${fmtMoney(falta)}</b> para completarla.`;
+  } else {
+    info.style.display = 'none';
+    info.innerHTML = '';
+  }
   openOverlay('ov-pago');
+}
+/* Borra/limpia de la agenda las visitas de cobro pendientes de este cliente
+   que quedaron cargadas en lo que resta del mes actual, una vez que la
+   cuota queda saldada (ya sea porque pagó antes de la fecha o porque
+   completó la cuota en varios pagos parciales). */
+function limpiarVisitasDelMesParaCliente(clientId){
+  const hoy = todayStr();
+  const mesActual = hoy.slice(0,7); // YYYY-MM
+  state.visits = state.visits.filter(v=>{
+    if(v.clientId!==clientId) return true; // no toca otros clientes/fletes
+    if(v.done) return true; // ya completada, se deja como historial
+    const mesVisita = (v.fecha||hoy).slice(0,7);
+    if(mesVisita===mesActual) return false; // se saca del calendario del mes
+    return true;
+  });
 }
 function registrarPago(){
   const c = state.clients.find(x=>x.id===activeDetailClientId);
@@ -1427,24 +1457,47 @@ function registrarPago(){
 
   const numeroCuota = c.cuotasPagadas + 1;
   state.payments.push({id:uid(), clientId:c.id, monto, metodo, tipo:'parcial', fecha: todayStr()});
-  c.cuotasPagadas = Math.min(c.cuotas, c.cuotasPagadas+1);
-  const restante = (c.cuotas - c.cuotasPagadas) * c.montoCuota;
-  const d = new Date(); d.setDate(d.getDate() + (c.frecuencia==='semanal'?7:30));
-  c.fechaPago = d.toISOString().slice(0,10);
+
+  let acumulado = (c.acumuladoParcial||0) + monto;
+  let cuotasCompletadas = 0;
+  // Puede completar más de una cuota si pagó de más (o adelantó varias).
+  while(c.cuotasPagadas < c.cuotas && acumulado >= (c.montoCuota||0) && (c.montoCuota||0) > 0){
+    acumulado -= c.montoCuota;
+    c.cuotasPagadas += 1;
+    cuotasCompletadas++;
+    const d = new Date((c.fechaPago||todayStr())+'T00:00:00');
+    d.setDate(d.getDate() + (c.frecuencia==='semanal'?7:30));
+    c.fechaPago = d.toISOString().slice(0,10);
+  }
+  c.acumuladoParcial = acumulado>0 ? Math.round(acumulado*100)/100 : 0;
+
+  let msg, tituloResultado;
+  if(cuotasCompletadas>0){
+    // Si pagó antes de la fecha, o completó la cuota en varios pagos parciales,
+    // sacamos del calendario de este mes cualquier otra visita de cobro pendiente
+    // de este cliente que hubiera quedado cargada.
+    limpiarVisitasDelMesParaCliente(c.id);
+    const restanteTxt = c.cuotas - c.cuotasPagadas;
+    tituloResultado = 'Pago registrado ✓';
+    msg = `Hola ${c.nombre}! Recibimos su pago de ${fmtMoney(monto)}. Cuota número ${numeroCuota} completada. Le restan ${restanteTxt} cuota(s). Próximo vencimiento: ${c.fechaPago}. ¡Gracias!`;
+  } else {
+    tituloResultado = 'Pago parcial registrado';
+    const falta = Math.round(((c.montoCuota||0) - acumulado)*100)/100;
+    msg = `Hola ${c.nombre}! Recibimos su pago parcial de ${fmtMoney(monto)} de la cuota número ${numeroCuota}. Llevás ${fmtMoney(acumulado)} de ${fmtMoney(c.montoCuota)}, faltan ${fmtMoney(falta)} para completarla. ¡Gracias!`;
+  }
   saveState();
   closeOverlay('ov-pago');
 
-  const msg = `Hola ${c.nombre}! Recibimos su pago de ${fmtMoney(monto)} de la cuota número ${numeroCuota}. Le restan ${c.cuotas - c.cuotasPagadas} cuota(s). Próximo vencimiento: ${c.fechaPago}. ¡Gracias!`;
   const wa = 'https://wa.me/' + (c.tel||'').replace(/\D/g,'') + '?text=' + encodeURIComponent(msg);
   document.getElementById('detailBody').innerHTML = `
     <div class="card">
-      <h3>Pago registrado ✓</h3>
+      <h3>${tituloResultado}</h3>
       <div class="muted" style="margin-bottom:10px;">Confirmá el mensaje y enviálo por WhatsApp:</div>
       <div class="muted" style="background:#fff;color:#20232A;border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:12px;">${msg}</div>
       <a href="${wa}" target="_blank" class="btn green block" style="display:block;text-align:center;text-decoration:none;">Enviar por WhatsApp</a>
     </div>`;
   renderAll();
-  toast('Pago registrado');
+  toast(cuotasCompletadas>0 ? 'Pago registrado' : 'Pago parcial registrado');
 }
 
 /* ---------- Visita sin pago / Reagenda ---------- */
@@ -1847,6 +1900,7 @@ function itemToHTML(item, draggable, atrasado){
       <div class="visit-meta">${v.hora ? '⏰ '+v.hora+' · ' : ''}${metaLine} · ${v.km||0} km</div>
       <div class="visit-actions">
         ${c.loc ? `<button class="btn ghost" title="Ver en mapa" onclick="window.open('https://maps.google.com/?q=${c.loc}','_blank')">🗺️</button>` : ''}
+        ${c.type==='muebles' && restante>0 && !v.done ? `<button class="btn wood" title="Registrar pago" onclick="abrirPagoDesdeAgenda('${c.id}')">💰 Pagar</button>` : ''}
         ${c.type==='muebles' && c.tel ? `<button class="btn green" title="Avisar: hoy vence" onclick="sendReminderWA('${c.id}')">🔔</button>` : ''}
         ${c.type==='muebles' && restante>0 && !v.done ? `<button class="btn ghost" title="Sin pago" onclick="openReprogramar('${c.id}')">🚫</button>` : ''}
         <button class="btn ghost" title="Reagendar" onclick="openReagendarItem('${v.id}','visit')">🗓️</button>
