@@ -1408,6 +1408,7 @@ function openClientDetail(id){
         <button class="btn ghost block" style="margin-bottom:8px;" onclick="closeOverlay('ov-detail'); abrirDescuento('${c.id}');">🏷️ Aplicar descuento</button>
         <button class="btn ghost block" style="color:var(--red);" onclick="closeOverlay('ov-detail'); abrirPerdida('${c.id}');">❌ Dar de baja (pérdida)</button>
       </div>` : ''}
+      <button class="btn ghost block" style="margin-top:10px;color:var(--red);" onclick="eliminarCliente('${c.id}')">🗑️ Eliminar cuenta (duplicado / cargado por error)</button>
       <div style="display:flex;gap:8px;margin:12px 0;">
         ${c.tel ? `<a href="tel:${c.tel}" class="btn ghost" style="flex:1;text-align:center;text-decoration:none;">📞 Llamar</a>` : ''}
         ${waLink ? `<a href="${waLink}" target="_blank" class="btn ghost" style="flex:1;text-align:center;text-decoration:none;">💬 WhatsApp</a>` : ''}
@@ -1432,7 +1433,8 @@ function openClientDetail(id){
       <button class="btn ghost block" style="margin-bottom:8px;" onclick="generarPresupuestoPDF('${c.id}')">📄 Generar PDF del presupuesto</button>
       <button class="btn ghost block" style="margin-bottom:8px;" onclick="abrirEditarCliente('${c.id}')">✏️ Editar datos</button>
       ${c.estado!=='cobrado' ? `<button class="btn ghost block" style="margin-bottom:8px;" onclick="marcarAceptado('${c.id}')">Marcar presupuesto aceptado</button>` : ''}
-      ${c.estado!=='cobrado' ? `<button class="btn wood block" onclick="openPagoPintura()">Registrar cobro</button>` : ''}
+      ${c.estado!=='cobrado' ? `<button class="btn wood block" style="margin-bottom:8px;" onclick="openPagoPintura()">Registrar cobro</button>` : ''}
+      <button class="btn ghost block" style="color:var(--red);" onclick="eliminarCliente('${c.id}')">🗑️ Eliminar cuenta (duplicado / cargado por error)</button>
     `;
   }
   document.getElementById('detailBody').innerHTML = body;
@@ -1441,6 +1443,25 @@ function openClientDetail(id){
 function marcarAceptado(id){
   const c = state.clients.find(x=>x.id===id);
   c.estado='aceptado'; saveState(); toast('Presupuesto marcado como aceptado'); openClientDetail(id);
+}
+// Elimina la ficha del cliente (no suma a Balance ni a Incobrables y descuentos):
+// para cuentas duplicadas o cargadas por error, no para clientes que no pagaron.
+// OJO: los pagos y ventas que ya se cobraron NO se borran — esa plata realmente
+// entró y ya está contada en el Cobrado/Vendido de Caja y Balance de esos meses;
+// borrarla dejaría el historial de caja descuadrado. Solo se borra la ficha en sí
+// y lo que todavía no pasó (visitas pendientes en agenda, reagendas futuras).
+function eliminarCliente(id){
+  const c = state.clients.find(x=>x.id===id);
+  if(!c) return;
+  if(!confirm(`¿Eliminar definitivamente a "${c.nombre}"?\n\nSe borra la ficha y sus visitas pendientes de agenda. Los pagos y ventas ya cobrados quedan como están (siguen contando en el Cobrado/Vendido de esos meses) — no se cuentan como pérdida ni afectan el Balance. Usalo solo para corregir un duplicado o una carga por error. Esto no se puede deshacer.`)) return;
+  state.clients = state.clients.filter(x=>x.id!==id);
+  state.visits = state.visits.filter(v=>v.clientId!==id);
+  state.reprogramaciones = state.reprogramaciones.filter(r=>r.clientId!==id);
+  state.movimientosPerdida = (state.movimientosPerdida||[]).filter(m=>m.clientId!==id);
+  saveState();
+  closeOverlay('ov-detail');
+  renderAll();
+  toast('Cuenta eliminada');
 }
 
 /* ---------- Pintura: cobro y presupuesto en PDF ---------- */
