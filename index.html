@@ -336,6 +336,14 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
         <div class="muted" style="margin-bottom:8px;">Buenos pagadores con crédito casi terminado</div>
         <div id="renovarList"></div>
       </div>
+      <div class="card">
+        <h3>Incobrables y descuentos</h3>
+        <div class="muted" style="margin-bottom:6px;">Este mes</div>
+        <div style="font-size:20px;font-weight:800;margin-bottom:10px;color:var(--red);" id="perdidasMes">$0</div>
+        <div class="muted" style="margin-bottom:6px;">Acumulado histórico</div>
+        <div style="font-size:20px;font-weight:800;margin-bottom:10px;" id="perdidasTotal">$0</div>
+        <div id="perdidasDetalle"></div>
+      </div>
     </section>
 
     <!-- MAS -->
@@ -725,14 +733,26 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
       </div>
 
       <div class="type-toggle" id="reprogModoToggle" style="flex-wrap:wrap;">
-        <button class="on" data-m="reagendar" onclick="setModoReprog('reagendar')">Reagendar fecha</button>
+        <button class="on" data-m="reagendar" onclick="setModoReprog('reagendar')">No pagó / reagendar</button>
         <button data-m="mover" onclick="setModoReprog('mover')">Mover agenda</button>
         <button data-m="esquema" onclick="setModoReprog('esquema')">Esquema de pago</button>
       </div>
 
       <div id="modoReagendar">
-        <div class="helper">Reagenda únicamente este compromiso de pago.</div>
-        <div class="field"><label>Nueva fecha</label><input type="date" id="reprogFecha" onchange="reprogramarPago()"></div>
+        <div class="helper">No pagó la cuota <span id="reprogSaldoParcialMonto">—</span> este período. ¿Qué hacemos con esa deuda?</div>
+        <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:8px;">
+          <input type="radio" name="saldoParcialModo" value="sumar" id="saldoModoSumar" checked style="margin-top:3px;">
+          <span>Cobrar dos juntas el próximo mes</span>
+        </label>
+        <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:8px;">
+          <input type="radio" name="saldoParcialModo" value="repartir" id="saldoModoRepartir" style="margin-top:3px;">
+          <span>Dividir esa deuda entre las cuotas que quedan (sube un poco el monto de cada una)</span>
+        </label>
+        <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:12px;">
+          <input type="radio" name="saldoParcialModo" value="aplazar" id="saldoModoAplazar" style="margin-top:3px;">
+          <span>Aplazar un mes (se agrega una cuota más al final, el monto no cambia)</span>
+        </label>
+        <div class="field"><label>Nueva fecha de cobro</label><input type="date" id="reprogFecha" onchange="reprogramarPago()"></div>
       </div>
 
       <div id="modoMover" style="display:none;">
@@ -758,6 +778,74 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
       </div>
 
       <button class="btn wood block" style="margin-top:14px;" onclick="reprogramarPago()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: aplicar descuento -->
+<div class="overlay" id="ov-descuento">
+  <div class="sheet">
+    <div class="sheet-wrap">
+      <button class="close-x" onclick="closeOverlay('ov-descuento')">✕</button>
+      <h2>Aplicar descuento</h2>
+      <div style="font-weight:700;margin-bottom:4px;" id="descClientName">Cliente</div>
+      <div class="muted" style="margin-bottom:14px;">Debe <b id="descRestanteActual">—</b>. El descuento se descuenta del total y se reparte entre las cuotas que quedan (mismas fechas, monto más chico).</div>
+      <div class="type-toggle" id="descTipoToggle">
+        <button class="on" data-t="monto" onclick="setTipoDescuento('monto')">Monto fijo ($)</button>
+        <button data-t="porcentaje" onclick="setTipoDescuento('porcentaje')">Porcentaje (%)</button>
+      </div>
+      <div class="field"><label id="descValorLabel">Monto del descuento ($)</label><input type="number" id="descValor" oninput="actualizarResumenDescuento()"></div>
+      <div class="field"><label>Motivo (opcional)</label><input id="descNota" placeholder="Ej: buen cliente, cerró antes"></div>
+      <div class="muted" id="descResumen" style="background:#fff;color:#20232A;border-radius:10px;padding:10px;margin-bottom:6px;"></div>
+      <button class="btn wood block" style="margin-top:10px;" onclick="guardarDescuento()">Aplicar descuento</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: dar de baja / pérdida -->
+<div class="overlay" id="ov-perdida">
+  <div class="sheet">
+    <div class="sheet-wrap">
+      <button class="close-x" onclick="closeOverlay('ov-perdida')">✕</button>
+      <h2>Dar de baja por pérdida</h2>
+      <div style="font-weight:700;margin-bottom:4px;" id="perdClientName">Cliente</div>
+      <div class="card" style="background:var(--red-bg);border-color:var(--red);margin-bottom:14px;">
+        <div class="muted">Se va a condonar (dar por perdido)</div>
+        <div style="font-weight:800;font-size:22px;color:var(--red);" id="perdMonto">—</div>
+        <div class="muted" style="margin-top:6px;font-size:12px;">La cuenta queda cerrada en $0, no vuelve a aparecer en la agenda de cobros ni en la deuda activa del Balance. Esto no se puede deshacer desde la app.</div>
+      </div>
+      <div class="field"><label>Motivo (opcional)</label><input id="perdNota" placeholder="Ej: se mudó, no responde hace 4 meses"></div>
+      <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:14px;">
+        <input type="checkbox" id="perdConfirmar" style="margin-top:2px;">
+        <span>Sí, dar de baja esta cuenta definitivamente</span>
+      </label>
+      <button class="btn wood block" style="background:var(--red);" onclick="confirmarPerdida()">Confirmar baja</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: decisión sobre un pago parcial -->
+<div class="overlay" id="ov-decision-parcial">
+  <div class="sheet">
+    <div class="sheet-wrap">
+      <button class="close-x" onclick="cancelarDecisionParcial()">✕</button>
+      <h2>Pago parcial</h2>
+      <div class="muted" id="decParcialTexto" style="margin-bottom:14px;"></div>
+      <div class="helper" style="margin-top:0;">¿Cómo seguimos con la diferencia?</div>
+      <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:8px;">
+        <input type="radio" name="decParcialModo" value="seguir" checked style="margin-top:3px;" onchange="toggleDecParcialFecha()">
+        <span>Se cobra durante el mismo período (si no se completa hasta fin de mes, se suma sola a la próxima cuota)</span>
+      </label>
+      <div class="field" id="decParcialFechaField" style="margin-left:26px;"><label>Volver a pasar el</label><input type="date" id="decParcialFecha"></div>
+      <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:8px;">
+        <input type="radio" name="decParcialModo" value="sumar" style="margin-top:3px;" onchange="toggleDecParcialFecha()">
+        <span>Se suma directo a la próxima cuota (no insistir este mes)</span>
+      </label>
+      <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:14px;">
+        <input type="radio" name="decParcialModo" value="dividir" style="margin-top:3px;" onchange="toggleDecParcialFecha()">
+        <span>Se divide entre las cuotas que quedan (sube un poco el monto de cada una)</span>
+      </label>
+      <button class="btn wood block" onclick="confirmarDecisionParcial()">Confirmar</button>
     </div>
   </div>
 </div>
@@ -797,6 +885,7 @@ let state = {
   proveedores: [], // {id, nombre}
   comprasProveedor: [], // {id, proveedorId, producto, costo, flete, fecha}
   serviciosProveedor: [], // {id, proveedorId, descripcion, monto, fecha}
+  movimientosPerdida: [], // {id, clientId, tipo:'perdida'|'descuento', monto, fecha, nota}
   nextCode: 1
 };
 let selectedAgendaDate = null;
@@ -1147,6 +1236,8 @@ function renderClientes(filterText, filterType){
         right = `<div class="client-debt">Debe ${fmtMoney(restante)}<br><span class="muted" style="font-size:11px;">${diasTexto}</span></div>`;
         const b = bucketDe(dias);
         if(b) semaforoDot = `<span class="dot" style="background:${BUCKET_INFO[b].color};margin-right:6px;"></span>`;
+      } else if(c.perdida){
+        right = `<div class="muted" style="color:var(--red);font-weight:700;">Pérdida ✗</div>`;
       } else {
         right = `<div class="client-ok">Saldado ✓</div>`;
       }
@@ -1307,9 +1398,16 @@ function openClientDetail(id){
       <button class="btn ghost block" style="margin-bottom:8px;" onclick="abrirEditarCliente('${c.id}')">✏️ Editar datos</button>
       <div class="card">
         <div class="muted">Saldo</div>
-        <div style="font-weight:800;font-size:24px;">${restante>0 ? fmtMoney(restante) : 'Saldado ✓'}</div>
+        <div style="font-weight:800;font-size:24px;${c.perdida?'color:var(--red);':''}">${c.perdida ? 'Pérdida ✗' : (restante>0 ? fmtMoney(restante) : 'Saldado ✓')}</div>
+        ${c.perdida ? `<div class="muted" style="margin-top:6px;font-size:12px;">Dado de baja el ${c.fechaPerdida||''} · se condonaron ${fmtMoney(c.montoPerdida||0)}${c.notaPerdida?' · '+c.notaPerdida:''}</div>` : ''}
         ${c.puntosMalos>0 ? `<div style="color:var(--red);font-weight:700;margin-top:6px;font-size:13px;">⚠️ ${c.puntosMalos} punto(s) malo(s)</div>` : ''}
       </div>
+      ${restante>0 && !c.perdida ? `
+      <div class="card" style="background:var(--red-bg);border-color:var(--red);margin-top:10px;">
+        <div class="muted" style="margin-bottom:8px;">Zona de riesgo</div>
+        <button class="btn ghost block" style="margin-bottom:8px;" onclick="closeOverlay('ov-detail'); abrirDescuento('${c.id}');">🏷️ Aplicar descuento</button>
+        <button class="btn ghost block" style="color:var(--red);" onclick="closeOverlay('ov-detail'); abrirPerdida('${c.id}');">❌ Dar de baja (pérdida)</button>
+      </div>` : ''}
       <div style="display:flex;gap:8px;margin:12px 0;">
         ${c.tel ? `<a href="tel:${c.tel}" class="btn ghost" style="flex:1;text-align:center;text-decoration:none;">📞 Llamar</a>` : ''}
         ${waLink ? `<a href="${waLink}" target="_blank" class="btn ghost" style="flex:1;text-align:center;text-decoration:none;">💬 WhatsApp</a>` : ''}
@@ -1475,50 +1573,7 @@ function limpiarVisitasDelMesParaCliente(clientId){
     return true;
   });
 }
-function registrarPago(){
-  const c = state.clients.find(x=>x.id===activeDetailClientId);
-  const monto = Number(document.getElementById('pagoMonto').value||0);
-  const metodo = document.getElementById('pagoMetodo').value;
-  if(!monto){ toast('Ingresá un monto'); return; }
-
-  const numeroCuota = c.cuotasPagadas + 1;
-  state.payments.push({id:uid(), clientId:c.id, monto, metodo, tipo:'parcial', fecha: todayStr()});
-
-  let acumulado = (c.acumuladoParcial||0) + monto;
-  let cuotasCompletadas = 0;
-  // Puede completar más de una cuota si pagó de más (o adelantó varias).
-  while(c.cuotasPagadas < c.cuotas && acumulado >= (c.montoCuota||0) && (c.montoCuota||0) > 0){
-    acumulado -= c.montoCuota;
-    c.cuotasPagadas += 1;
-    cuotasCompletadas++;
-    const d = new Date((c.fechaPago||todayStr())+'T00:00:00');
-    d.setDate(d.getDate() + (c.frecuencia==='semanal'?7:30));
-    c.fechaPago = d.toISOString().slice(0,10);
-  }
-  c.acumuladoParcial = acumulado>0 ? Math.round(acumulado*100)/100 : 0;
-
-  let msg, tituloResultado;
-  if(cuotasCompletadas>0){
-    // Si pagó antes de la fecha, o completó la cuota en varios pagos parciales,
-    // sacamos del calendario de este mes cualquier otra visita de cobro pendiente
-    // de este cliente que hubiera quedado cargada.
-    limpiarVisitasDelMesParaCliente(c.id);
-    const restanteTxt = c.cuotas - c.cuotasPagadas;
-    tituloResultado = 'Pago registrado ✓';
-    msg = `Hola ${c.nombre}! Recibimos su pago de ${fmtMoney(monto)}. Cuota número ${numeroCuota} completada. Le restan ${restanteTxt} cuota(s). Próximo vencimiento: ${c.fechaPago}. ¡Gracias!`;
-  } else {
-    tituloResultado = 'Pago parcial registrado';
-    const falta = Math.round(((c.montoCuota||0) - acumulado)*100)/100;
-    msg = `Hola ${c.nombre}! Recibimos su pago parcial de ${fmtMoney(monto)} de la cuota número ${numeroCuota}. Llevás ${fmtMoney(acumulado)} de ${fmtMoney(c.montoCuota)}, faltan ${fmtMoney(falta)} para completarla. ¡Gracias!`;
-  }
-  // Ya se registró algo hoy con este cliente (pago completo o parcial):
-  // se marca como resuelta la visita del día para que deje de aparecer
-  // en la lista de pendientes de "hoy".
-  const vHoy = state.visits.find(x=> x.clientId===c.id && !x.done && (x.fecha===selectedAgendaDate || x.fecha===todayStr()));
-  if(vHoy) vHoy.done = true;
-  saveState();
-  closeOverlay('ov-pago');
-
+function mostrarConfirmacionPago(c, tituloResultado, msg){
   const wa = 'https://wa.me/' + (c.tel||'').replace(/\D/g,'') + '?text=' + encodeURIComponent(msg);
   document.getElementById('detailBody').innerHTML = `
     <div class="card">
@@ -1527,8 +1582,215 @@ function registrarPago(){
       <div class="muted" style="background:#fff;color:#20232A;border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:12px;">${msg}</div>
       <a href="${wa}" target="_blank" class="btn green block" style="display:block;text-align:center;text-decoration:none;">Enviar por WhatsApp</a>
     </div>`;
+}
+// Marca como resuelta la visita de hoy de este cliente (si la hay), para que
+// deje de aparecer entre los pendientes de la Agenda apenas se le registra algo.
+function resolverVisitaDeHoy(clientId){
+  const vHoy = state.visits.find(x=> x.clientId===clientId && !x.done && (x.fecha===selectedAgendaDate || x.fecha===todayStr()));
+  if(vHoy) vHoy.done = true;
+}
+let pendingPagoParcial = null;
+function registrarPago(){
+  const c = state.clients.find(x=>x.id===activeDetailClientId);
+  const monto = Number(document.getElementById('pagoMonto').value||0);
+  const metodo = document.getElementById('pagoMetodo').value;
+  if(!monto){ toast('Ingresá un monto'); return; }
+
+  const numeroCuota = c.cuotasPagadas + 1;
+  const acumuladoNuevo = (c.acumuladoParcial||0) + monto;
+  const completaCuota = (c.montoCuota||0) > 0 && acumuladoNuevo >= c.montoCuota;
+
+  if(completaCuota){
+    state.payments.push({id:uid(), clientId:c.id, monto, metodo, tipo:'parcial', fecha: todayStr()});
+    let acumulado = acumuladoNuevo;
+    let cuotasCompletadas = 0;
+    // Puede completar más de una cuota si pagó de más (o adelantó varias).
+    while(c.cuotasPagadas < c.cuotas && acumulado >= (c.montoCuota||0) && (c.montoCuota||0) > 0){
+      acumulado -= c.montoCuota;
+      c.cuotasPagadas += 1;
+      cuotasCompletadas++;
+      const d = new Date((c.fechaPago||todayStr())+'T00:00:00');
+      d.setDate(d.getDate() + (c.frecuencia==='semanal'?7:30));
+      c.fechaPago = d.toISOString().slice(0,10);
+    }
+    c.acumuladoParcial = acumulado>0 ? Math.round(acumulado*100)/100 : 0;
+    // Si pagó antes de la fecha, o completó la cuota en varios pagos parciales,
+    // sacamos del calendario de este mes cualquier otra visita de cobro pendiente
+    // de este cliente que hubiera quedado cargada.
+    limpiarVisitasDelMesParaCliente(c.id);
+    resolverVisitaDeHoy(c.id);
+    saveState();
+    closeOverlay('ov-pago');
+    const restanteTxt = c.cuotas - c.cuotasPagadas;
+    const msg = `Hola ${c.nombre}! Recibimos su pago de ${fmtMoney(monto)}. Cuota número ${numeroCuota} completada. Le restan ${restanteTxt} cuota(s). Próximo vencimiento: ${c.fechaPago}. ¡Gracias!`;
+    mostrarConfirmacionPago(c, 'Pago registrado ✓', msg);
+    renderAll();
+    toast('Pago registrado');
+  } else {
+    // Queda parcial: antes de guardar nada, preguntamos cómo seguir con la diferencia.
+    pendingPagoParcial = {clientId:c.id, monto, metodo, numeroCuota, acumuladoNuevo};
+    closeOverlay('ov-pago');
+    abrirDecisionParcial(c, numeroCuota, acumuladoNuevo);
+  }
+}
+function fechaSugeridaSeguirCobrando(){
+  const hoy = new Date();
+  const sugerida = new Date(hoy); sugerida.setDate(sugerida.getDate()+5);
+  const finDeMes = new Date(hoy.getFullYear(), hoy.getMonth()+1, 0);
+  const usar = sugerida > finDeMes ? finDeMes : sugerida;
+  const local = new Date(usar.getTime() - usar.getTimezoneOffset()*60000);
+  return local.toISOString().slice(0,10);
+}
+function toggleDecParcialFecha(){
+  const modo = document.querySelector('input[name="decParcialModo"]:checked').value;
+  document.getElementById('decParcialFechaField').style.display = modo==='seguir' ? 'block' : 'none';
+}
+function abrirDecisionParcial(c, numeroCuota, acumuladoNuevo){
+  const falta = Math.round(((c.montoCuota||0) - acumuladoNuevo)*100)/100;
+  document.getElementById('decParcialTexto').innerHTML = `Pago de la cuota número ${numeroCuota}. Llevás <b>${fmtMoney(acumuladoNuevo)}</b> de <b>${fmtMoney(c.montoCuota)}</b>, faltan <b>${fmtMoney(falta)}</b> para completarla.`;
+  document.querySelector('input[name="decParcialModo"][value="seguir"]').checked = true;
+  document.getElementById('decParcialFecha').value = fechaSugeridaSeguirCobrando();
+  toggleDecParcialFecha();
+  openOverlay('ov-decision-parcial');
+}
+function cancelarDecisionParcial(){
+  // Si cierra sin elegir, no se pierde el pago: se aplica el comportamiento
+  // por defecto (se suma a la próxima cuota) para no dejar el pago sin guardar.
+  if(pendingPagoParcial) confirmarDecisionParcial('sumar');
+  else closeOverlay('ov-decision-parcial');
+}
+function confirmarDecisionParcial(modoForzado){
+  const p = pendingPagoParcial;
+  if(!p) return;
+  const c = state.clients.find(x=>x.id===p.clientId);
+  const modo = modoForzado || document.querySelector('input[name="decParcialModo"]:checked').value;
+
+  state.payments.push({id:uid(), clientId:c.id, monto:p.monto, metodo:p.metodo, tipo:'parcial', fecha: todayStr()});
+
+  let msgExtra = '';
+  if(modo==='dividir'){
+    // Reparte toda la deuda restante (ya descontado lo recién pagado) entre
+    // las cuotas que quedan, subiendo un poco el monto de cada una.
+    const cuotasRestantes = Math.max(1, c.cuotas - c.cuotasPagadas);
+    const deudaTotal = cuotasRestantes*c.montoCuota - p.acumuladoNuevo;
+    c.montoCuota = Math.round((deudaTotal/cuotasRestantes)*100)/100;
+    c.acumuladoParcial = 0;
+    msgExtra = ` El saldo se repartió entre las ${cuotasRestantes} cuota(s) que quedan — el nuevo monto por cuota es ${fmtMoney(c.montoCuota)}.`;
+  } else {
+    c.acumuladoParcial = Math.round(p.acumuladoNuevo*100)/100;
+    if(modo==='seguir'){
+      const fecha = document.getElementById('decParcialFecha').value || todayStr();
+      state.visits.push({id:uid(), clientId:c.id, hora:'', fecha, done:false, orden:Date.now(), km:0});
+      msgExtra = ` Pasamos de nuevo a cobrar el resto.`;
+    } else {
+      msgExtra = ` Se suma a la próxima cuota.`;
+    }
+  }
+
+  resolverVisitaDeHoy(c.id);
+  saveState();
+  closeOverlay('ov-decision-parcial');
+
+  const falta = Math.round(((c.montoCuota||0) - (c.acumuladoParcial||0))*100)/100;
+  const msg = `Hola ${c.nombre}! Recibimos su pago parcial de ${fmtMoney(p.monto)} de la cuota número ${p.numeroCuota}.${msgExtra} ¡Gracias!`;
+  mostrarConfirmacionPago(c, 'Pago parcial registrado', msg);
   renderAll();
-  toast(cuotasCompletadas>0 ? 'Pago registrado' : 'Pago parcial registrado');
+  toast('Pago parcial registrado');
+  pendingPagoParcial = null;
+}
+
+/* ---------- Descuento puntual y baja por pérdida ---------- */
+let activeDescuentoClientId = null;
+let tipoDescuento = 'monto';
+function setTipoDescuento(t){
+  tipoDescuento = t;
+  document.querySelectorAll('#descTipoToggle button').forEach(b=>b.classList.toggle('on', b.dataset.t===t));
+  document.getElementById('descValorLabel').textContent = t==='monto' ? 'Monto del descuento ($)' : 'Porcentaje de descuento (%)';
+  actualizarResumenDescuento();
+}
+function abrirDescuento(clientId){
+  activeDescuentoClientId = clientId;
+  const c = state.clients.find(x=>x.id===clientId);
+  const restante = (c.cuotas - c.cuotasPagadas) * c.montoCuota - (c.acumuladoParcial||0);
+  document.getElementById('descClientName').textContent = c.nombre + ' · ' + c.code;
+  document.getElementById('descRestanteActual').textContent = fmtMoney(restante);
+  document.getElementById('descValor').value = '';
+  document.getElementById('descNota').value = '';
+  document.getElementById('descResumen').textContent = '';
+  setTipoDescuento('monto');
+  openOverlay('ov-descuento');
+}
+function calcularMontoDescuento(c, restante){
+  const valor = Number(document.getElementById('descValor').value||0);
+  if(valor<=0) return 0;
+  return tipoDescuento==='monto' ? Math.min(valor, restante) : Math.min(restante, Math.round(restante*(valor/100)*100)/100);
+}
+function actualizarResumenDescuento(){
+  const c = state.clients.find(x=>x.id===activeDescuentoClientId);
+  if(!c) return;
+  const restante = (c.cuotas - c.cuotasPagadas) * c.montoCuota - (c.acumuladoParcial||0);
+  const descuento = calcularMontoDescuento(c, restante);
+  const resumen = document.getElementById('descResumen');
+  if(descuento<=0){ resumen.textContent=''; return; }
+  const cuotasRestantes = Math.max(1, c.cuotas - c.cuotasPagadas);
+  const nuevoTotal = restante - descuento;
+  const nuevoMonto = Math.round((nuevoTotal/cuotasRestantes)*100)/100;
+  resumen.textContent = `Descuento de ${fmtMoney(descuento)}. Nueva deuda total: ${fmtMoney(nuevoTotal)}, repartida en ${cuotasRestantes} cuota(s) de ${fmtMoney(nuevoMonto)}.`;
+}
+function guardarDescuento(){
+  const c = state.clients.find(x=>x.id===activeDescuentoClientId);
+  if(!c) return;
+  const restante = (c.cuotas - c.cuotasPagadas) * c.montoCuota - (c.acumuladoParcial||0);
+  const descuento = calcularMontoDescuento(c, restante);
+  if(descuento<=0){ toast('Ingresá un monto o porcentaje válido'); return; }
+  const nota = document.getElementById('descNota').value.trim();
+
+  const cuotasRestantes = Math.max(1, c.cuotas - c.cuotasPagadas);
+  const nuevoTotal = restante - descuento;
+  c.montoCuota = Math.round((nuevoTotal/cuotasRestantes)*100)/100;
+  c.acumuladoParcial = 0;
+
+  state.movimientosPerdida.push({id:uid(), clientId:c.id, tipo:'descuento', monto:descuento, fecha:todayStr(), nota});
+  saveState();
+  closeOverlay('ov-descuento');
+  renderAll();
+  openClientDetail(c.id);
+  toast('Descuento aplicado');
+}
+function abrirPerdida(clientId){
+  activeDescuentoClientId = clientId;
+  const c = state.clients.find(x=>x.id===clientId);
+  const restante = (c.cuotas - c.cuotasPagadas) * c.montoCuota - (c.acumuladoParcial||0);
+  document.getElementById('perdClientName').textContent = c.nombre + ' · ' + c.code;
+  document.getElementById('perdMonto').textContent = fmtMoney(restante);
+  document.getElementById('perdNota').value = '';
+  document.getElementById('perdConfirmar').checked = false;
+  openOverlay('ov-perdida');
+}
+function confirmarPerdida(){
+  const c = state.clients.find(x=>x.id===activeDescuentoClientId);
+  if(!c) return;
+  if(!document.getElementById('perdConfirmar').checked){ toast('Tildá la confirmación para dar de baja la cuenta'); return; }
+  const restante = (c.cuotas - c.cuotasPagadas) * c.montoCuota - (c.acumuladoParcial||0);
+  const nota = document.getElementById('perdNota').value.trim();
+
+  c.perdida = true;
+  c.fechaPerdida = todayStr();
+  c.montoPerdida = Math.max(0, restante);
+  c.notaPerdida = nota;
+  c.cuotasPagadas = c.cuotas;
+  c.acumuladoParcial = 0;
+
+  state.movimientosPerdida.push({id:uid(), clientId:c.id, tipo:'perdida', monto:c.montoPerdida, fecha:todayStr(), nota});
+  limpiarVisitasDelMesParaCliente(c.id);
+  // Además saca cualquier visita futura de otros meses que hubiera quedado agendada.
+  state.visits = state.visits.filter(v=> v.clientId!==c.id || v.done);
+
+  saveState();
+  closeOverlay('ov-perdida');
+  renderAll();
+  openClientDetail(c.id);
+  toast('Cliente dado de baja por pérdida');
 }
 
 /* ---------- Visita sin pago / Reagenda ---------- */
@@ -1542,6 +1804,9 @@ function openReprogramar(clientId, visitId){
   document.getElementById('reprogClientName').textContent = c.nombre + ' · ' + c.code;
   document.getElementById('reprogOriginal').textContent = c.fechaPago || '—';
   document.getElementById('reprogMontoActual').textContent = fmtMoney(c.montoCuota);
+  const deudaEstaCuota = Math.max(0, (c.montoCuota||0) - (c.acumuladoParcial||0));
+  document.getElementById('reprogSaldoParcialMonto').textContent = fmtMoney(deudaEstaCuota);
+  document.getElementById('saldoModoSumar').checked = true;
   document.getElementById('reprogFecha').value = selectedAgendaDate || c.fechaPago || todayStr();
   document.getElementById('moverFecha').value = selectedAgendaDate || c.fechaPago || todayStr();
   document.getElementById('esqMonto').value = c.montoCuota || '';
@@ -1563,7 +1828,7 @@ function setModoReprog(m){
 function actualizarResumenEsquema(){
   const c = state.clients.find(x=>x.id===activeReprogClientId);
   if(!c) return;
-  const restante = (c.cuotas - c.cuotasPagadas) * c.montoCuota;
+  const restante = (c.cuotas - c.cuotasPagadas) * c.montoCuota - (c.acumuladoParcial||0);
   const nuevoMonto = Number(document.getElementById('esqMonto').value || c.montoCuota || 0);
   const nuevaFecha = document.getElementById('esqFecha').value || c.fechaPago;
   const esquema = document.getElementById('esqFrecuencia').value;
@@ -1588,11 +1853,19 @@ function reprogramarPago(){
   let notaAccion = '';
   const fechaAnterior = c.fechaPago;
 
+  // Modo "No pagó / reagendar": el usuario elige qué hacer con la deuda de la cuota no pagada.
+  const saldoModo = modoReprog==='reagendar' ? (document.querySelector('input[name="saldoParcialModo"]:checked')||{}).value : null;
+
   if(modoReprog==='reagendar'){
     const nueva = document.getElementById('reprogFecha').value;
     if(!nueva){ toast('Elegí una fecha'); return; }
     c.fechaPago = nueva;
-    notaAccion = 'Reagendado para '+nueva;
+    if(saldoModo==='aplazar'){
+      c.cuotas = (c.cuotas||0) + 1;
+      notaAccion = 'Aplazado un mes (se agregó una cuota más al plan)';
+    } else {
+      notaAccion = 'Reagendado para '+nueva;
+    }
   } else if(modoReprog==='mover'){
     const nueva = document.getElementById('moverFecha').value;
     if(!nueva){ toast('Elegí una fecha'); return; }
@@ -1603,14 +1876,23 @@ function reprogramarPago(){
     const nuevaFecha = document.getElementById('esqFecha').value;
     const esquema = document.getElementById('esqFrecuencia').value;
     if(!nuevoMonto || !nuevaFecha){ toast('Completá monto y fecha'); return; }
-    const restante = (c.cuotas - c.cuotasPagadas) * c.montoCuota;
+    const restante = (c.cuotas - c.cuotasPagadas) * c.montoCuota - (c.acumuladoParcial||0);
     const n = Math.ceil(restante / nuevoMonto);
     c.montoCuota = nuevoMonto;
     c.frecuencia = esquema;
     c.fechaPago = nuevaFecha;
     c.cuotasPagadas = 0;
     c.cuotas = n;
+    c.acumuladoParcial = 0;
     notaAccion = 'Esquema de pago redefinido';
+  }
+
+  if(saldoModo==='repartir' && modoReprog==='reagendar'){
+    const cuotasRestantes = Math.max(1, c.cuotas - c.cuotasPagadas);
+    const deudaTotal = cuotasRestantes*c.montoCuota - (c.acumuladoParcial||0);
+    c.montoCuota = Math.round((deudaTotal/cuotasRestantes)*100)/100;
+    c.acumuladoParcial = 0;
+    notaAccion += ' · saldo repartido en las cuotas que quedan';
   }
   state.reprogramaciones.push({id:uid(), clientId:c.id, fecha:todayStr(), fechaAnterior, fechaNueva:c.fechaPago, modo:modoReprog});
 
@@ -2280,6 +2562,21 @@ function renderBalance(){
   document.getElementById('renovarList').innerHTML = buenosPagadores.length ? buenosPagadores.map(c=>`
     <div class="rubro-row"><span>${c.nombre}</span><b>Le quedan ${c.cuotas-c.cuotasPagadas} cuotas</b></div>
   `).join('') : `<div class="muted">Por ahora ningún cliente está cerca de terminar su plan.</div>`;
+
+  // Incobrables (pérdidas) y descuentos
+  const mesActualPerdidas = todayStr().slice(0,7);
+  const movs = state.movimientosPerdida || [];
+  const movsMes = movs.filter(m=>m.fecha.startsWith(mesActualPerdidas));
+  const totalMes = movsMes.reduce((s,m)=>s+m.monto,0);
+  const totalHistorico = movs.reduce((s,m)=>s+m.monto,0);
+  document.getElementById('perdidasMes').textContent = fmtMoney(totalMes);
+  document.getElementById('perdidasTotal').textContent = fmtMoney(totalHistorico);
+  const ultimos = [...movs].sort((a,b)=> b.fecha.localeCompare(a.fecha)).slice(0,8);
+  document.getElementById('perdidasDetalle').innerHTML = ultimos.length ? ultimos.map(m=>{
+    const cli = state.clients.find(x=>x.id===m.clientId);
+    const etiqueta = m.tipo==='perdida' ? '❌ Pérdida' : '🏷️ Descuento';
+    return `<div class="rubro-row"><span>${etiqueta} · ${cli?cli.nombre:'—'}<br><span class="muted" style="font-size:11px;">${m.fecha}${m.nota?' · '+m.nota:''}</span></span><b>${fmtMoney(m.monto)}</b></div>`;
+  }).join('') : `<div class="muted">Todavía no diste de baja ni aplicaste descuentos a ningún cliente.</div>`;
 }
 function renderMas(){
   document.getElementById('metaInput').value = state.metaMes || '';
