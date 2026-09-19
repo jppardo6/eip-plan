@@ -371,11 +371,6 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
         <button class="btn wood block" style="margin-top:10px;" onclick="abrirNuevoProveedor()">+ Nuevo proveedor</button>
       </div>
       <div class="card">
-        <h3>Contactos sin agendar</h3>
-        <div class="muted" style="margin-bottom:10px;">Números que te escribieron por WhatsApp y todavía no tenés como cliente. Se cargan desde el botón + → "Cargar capturas de WhatsApp".</div>
-        <div id="leadsList"></div>
-      </div>
-      <div class="card">
         <h3>Importar clientes</h3>
         <div class="muted" style="margin-bottom:10px;">Subí un archivo .json de clientes (por ejemplo, migrado de otra app) para cargarlos todos de una vez.</div>
         <input type="file" id="importFile" accept=".json" style="margin-bottom:10px;color:var(--ink);">
@@ -598,20 +593,6 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
 </div>
 
 <!-- MODAL: menú de agregar en agenda -->
-<input type="file" id="capturaWaInput" accept="image/*" multiple style="display:none;" onchange="procesarCapturasWhatsapp(this.files)">
-
-<!-- MODAL: resultado de lectura de capturas -->
-<div class="overlay" id="ov-captura-wa">
-  <div class="sheet">
-    <div class="sheet-wrap">
-      <button class="close-x" onclick="closeOverlay('ov-captura-wa')">✕</button>
-      <h2>Leyendo capturas de WhatsApp</h2>
-      <div class="muted" style="margin-bottom:10px;">La app busca el número en cada imagen. Cuando termine, revisá los contactos nuevos en Más → Contactos sin agendar y completá el nombre real cuando corresponda.</div>
-      <div id="capturaWaProgreso"></div>
-    </div>
-  </div>
-</div>
-
 <div class="overlay" id="ov-agenda-menu">
   <div class="sheet">
     <div class="sheet-wrap">
@@ -622,8 +603,7 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
       <button class="btn ghost block" style="margin-bottom:10px;" onclick="closeOverlay('ov-agenda-menu'); openFleteRapido();">🚚 Flete</button>
       <button class="btn ghost block" style="margin-bottom:10px;" onclick="closeOverlay('ov-agenda-menu'); openAddTask();">📝 Tarea</button>
       <button class="btn ghost block" style="margin-bottom:10px;" onclick="closeOverlay('ov-agenda-menu'); openPresupuestoRapido();">🖌️ Presupuesto de pintura</button>
-      <button class="btn ghost block" style="margin-bottom:10px;" onclick="closeOverlay('ov-agenda-menu'); openVentaRapida();">💵 Venta rápida</button>
-      <button class="btn ghost block" onclick="closeOverlay('ov-agenda-menu'); abrirCapturaWhatsapp();">📷 Cargar capturas de WhatsApp</button>
+      <button class="btn ghost block" onclick="closeOverlay('ov-agenda-menu'); openVentaRapida();">💵 Venta rápida</button>
     </div>
   </div>
 </div>
@@ -906,8 +886,6 @@ let state = {
   comprasProveedor: [], // {id, proveedorId, producto, costo, flete, fecha}
   serviciosProveedor: [], // {id, proveedorId, descripcion, monto, fecha}
   movimientosPerdida: [], // {id, clientId, tipo:'perdida'|'descuento', monto, fecha, nota}
-  leads: [], // {id, nombre, tel, fecha, revisar}
-  nextLeadNumber: 1,
   nextCode: 1
 };
 let selectedAgendaDate = null;
@@ -2134,72 +2112,6 @@ function verRutaCompleta(){
   window.open(url, '_blank');
 }
 function openAgendaAddMenu(){ openOverlay('ov-agenda-menu'); }
-
-/* ---------- Capturas de WhatsApp → contactos sin agendar ---------- */
-// Todo esto corre en el propio celular: la imagen nunca se sube a ningún lado,
-// solo se procesa localmente para leer el número y se descarta.
-let tesseractCargando = null;
-function cargarTesseract(){
-  if(window.Tesseract) return Promise.resolve();
-  if(tesseractCargando) return tesseractCargando;
-  tesseractCargando = new Promise((resolve, reject)=>{
-    const s = document.createElement('script');
-    s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
-    s.onload = ()=> resolve();
-    s.onerror = ()=> { tesseractCargando = null; reject(new Error('No se pudo cargar el lector de texto — revisá tu conexión a internet e intentá de nuevo.')); };
-    document.head.appendChild(s);
-  });
-  return tesseractCargando;
-}
-function abrirCapturaWhatsapp(){
-  const input = document.getElementById('capturaWaInput');
-  input.value = '';
-  input.click();
-}
-function extraerNumeroDeTexto(texto){
-  // Busca la secuencia de dígitos más larga (permitiendo +, espacios, guiones y paréntesis en el medio)
-  // que tenga pinta de número de teléfono (entre 8 y 14 dígitos).
-  const candidatos = texto.match(/[+]?[\d\s().-]{7,20}\d/g) || [];
-  let mejor = '';
-  candidatos.forEach(c=>{
-    const digitos = c.replace(/\D/g,'');
-    if(digitos.length>=8 && digitos.length<=14 && digitos.length>mejor.length) mejor = digitos;
-  });
-  return mejor;
-}
-async function procesarCapturasWhatsapp(fileList){
-  const files = Array.from(fileList||[]);
-  if(!files.length) return;
-  openOverlay('ov-captura-wa');
-  const progreso = document.getElementById('capturaWaProgreso');
-  progreso.textContent = 'Cargando el lector de texto (solo la primera vez)...';
-  try{
-    await cargarTesseract();
-  } catch(err){
-    progreso.innerHTML = `<div style="color:var(--red);">${err.message}</div>`;
-    return;
-  }
-  let sinLeer = 0;
-  for(let i=0;i<files.length;i++){
-    progreso.textContent = `Leyendo captura ${i+1} de ${files.length}...`;
-    let texto = '';
-    try{
-      const resultado = await Tesseract.recognize(files[i], 'eng');
-      texto = (resultado && resultado.data && resultado.data.text) || '';
-    } catch(err){
-      texto = '';
-    }
-    const numero = extraerNumeroDeTexto(texto);
-    const numeroLead = state.nextLeadNumber || 1;
-    state.nextLeadNumber = numeroLead + 1;
-    state.leads.push({id:uid(), nombre:'Cliente#'+numeroLead, tel:numero, fecha:todayStr(), revisar: !numero});
-    if(!numero) sinLeer++;
-  }
-  saveState();
-  progreso.innerHTML = `Listo — se agregaron ${files.length} contacto(s)${sinLeer? ', <b>'+sinLeer+'</b> sin número legible (revisalos a mano)':''}.<br><br>Los vas a encontrar en <b>Más → Contactos sin agendar</b>.`;
-  renderLeads();
-  toast('Capturas procesadas');
-}
 function renderAgenda(){
   if(!selectedAgendaDate) selectedAgendaDate = todayStr();
   document.getElementById('agendaDateInput').value = selectedAgendaDate;
@@ -2671,58 +2583,6 @@ function renderMas(){
   document.getElementById('metaClientesInput').value = state.objetivoClientesNuevos || '';
   document.getElementById('cantidadCierres').textContent = state.cierres.length;
   renderProveedores();
-  renderLeads();
-}
-function renderLeads(){
-  const leads = state.leads || [];
-  const el = document.getElementById('leadsList');
-  if(!el) return;
-  el.innerHTML = leads.length ? leads.map(l=>{
-    const wa = l.tel ? 'https://wa.me/'+l.tel.replace(/\D/g,'') : null;
-    return `<div class="card" style="margin-bottom:8px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;">
-        <div>
-          <div style="font-weight:700;">${l.nombre}${l.revisar?' ⚠️':''}</div>
-          <div class="muted" style="font-size:12px;">${l.tel || 'No se pudo leer el número — revisá la captura'} · ${l.fecha}</div>
-        </div>
-      </div>
-      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
-        ${wa ? `<a href="${wa}" target="_blank" class="btn ghost" style="text-decoration:none;">💬 WhatsApp</a>` : ''}
-        <button class="btn wood" onclick="convertirLeadEnCliente('${l.id}')">➡️ Convertir en cliente</button>
-        <button class="btn ghost" onclick="editarLead('${l.id}')">✏️ Editar</button>
-        <button class="btn ghost" onclick="descartarLead('${l.id}')">🗑️</button>
-      </div>
-    </div>`;
-  }).join('') : `<div class="muted">No hay contactos pendientes por ahora.</div>`;
-}
-function editarLead(id){
-  const l = state.leads.find(x=>x.id===id);
-  if(!l) return;
-  const nombre = prompt('Nombre:', l.nombre);
-  if(nombre===null) return;
-  const tel = prompt('Teléfono:', l.tel||'');
-  if(tel===null) return;
-  l.nombre = nombre.trim() || l.nombre;
-  l.tel = tel.trim();
-  l.revisar = false;
-  saveState(); renderLeads();
-}
-function descartarLead(id){
-  if(!confirm('¿Descartar este contacto?')) return;
-  state.leads = state.leads.filter(x=>x.id!==id);
-  saveState(); renderLeads();
-}
-function convertirLeadEnCliente(id){
-  const l = state.leads.find(x=>x.id===id);
-  if(!l) return;
-  showSection('clientes');
-  openOverlay('ov-client');
-  setTimeout(()=>{
-    document.getElementById('cNombre').value = l.nombre;
-    document.getElementById('cTel').value = l.tel || '';
-  }, 50);
-  state.leads = state.leads.filter(x=>x.id!==id);
-  saveState();
 }
 function saveMeta(){
   state.metaMes = Number(document.getElementById('metaInput').value||0);
