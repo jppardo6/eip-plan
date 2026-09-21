@@ -449,7 +449,8 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
         <div class="field"><label>Cantidad total de cuotas</label><input id="ecCuotas" type="number"></div>
         <div class="field"><label>Cuotas ya pagadas (completas)</label><input id="ecCuotasPagadas" type="number"></div>
         <div class="field"><label>Adelanto acumulado de la cuota actual ($)</label><input id="ecAcumuladoParcial" type="number" placeholder="0"></div>
-        <div class="muted" style="margin:-6px 0 12px;font-size:12px;">Usá estos 4 campos para corregir manualmente el saldo si se cargó mal un pago.</div>
+        <div class="field"><label>Próxima fecha de cobro</label><input id="ecFechaPago" type="date"></div>
+        <div class="muted" style="margin:-6px 0 12px;font-size:12px;">Usá estos campos para corregir manualmente el saldo o la fecha si se cargó algo mal.</div>
       </div>
       <div id="ecCamposPintura" style="display:none;">
         <div class="field"><label>Teléfono</label><input id="ecTelP"></div>
@@ -764,12 +765,12 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
           <input type="radio" name="saldoParcialModo" value="aplazar" id="saldoModoAplazar" style="margin-top:3px;">
           <span>Aplazar un mes (se agrega una cuota más al final, el monto no cambia)</span>
         </label>
-        <div class="field"><label>Nueva fecha de cobro</label><input type="date" id="reprogFecha" onchange="reprogramarPago()"></div>
+        <div class="field"><label>Nueva fecha de cobro</label><input type="date" id="reprogFecha"></div>
       </div>
 
       <div id="modoMover" style="display:none;">
         <div class="helper">Mueve los próximos pagos del cliente a partir de la fecha seleccionada.</div>
-        <div class="field"><label>Inicia el</label><input type="date" id="moverFecha" onchange="reprogramarPago()"></div>
+        <div class="field"><label>Inicia el</label><input type="date" id="moverFecha"></div>
       </div>
 
       <div id="modoEsquema" style="display:none;">
@@ -1379,6 +1380,7 @@ function abrirEditarCliente(id){
     document.getElementById('ecCuotas').value = c.cuotas || '';
     document.getElementById('ecCuotasPagadas').value = c.cuotasPagadas || 0;
     document.getElementById('ecAcumuladoParcial').value = c.acumuladoParcial || 0;
+    document.getElementById('ecFechaPago').value = c.fechaPago || '';
   } else {
     document.getElementById('ecTelP').value = c.tel || '';
     document.getElementById('ecDesc').value = c.descripcion || '';
@@ -1410,10 +1412,12 @@ function guardarEdicionCliente(){
     const nuevoCuotas = Number(document.getElementById('ecCuotas').value||0);
     const nuevoCuotasPagadas = Number(document.getElementById('ecCuotasPagadas').value||0);
     const nuevoAcumulado = Number(document.getElementById('ecAcumuladoParcial').value||0);
+    const nuevaFechaPago = document.getElementById('ecFechaPago').value;
     if(nuevoMontoCuota>0) c.montoCuota = nuevoMontoCuota;
     if(nuevoCuotas>0) c.cuotas = nuevoCuotas;
     c.cuotasPagadas = Math.max(0, Math.min(c.cuotas, nuevoCuotasPagadas));
     c.acumuladoParcial = Math.max(0, nuevoAcumulado);
+    if(nuevaFechaPago) c.fechaPago = nuevaFechaPago;
   } else {
     c.tel = document.getElementById('ecTelP').value.trim();
     c.descripcion = document.getElementById('ecDesc').value.trim();
@@ -1463,6 +1467,7 @@ function openClientDetail(id){
         ${c.loc ? `<a href="https://maps.google.com/?q=${c.loc}" target="_blank" class="btn ghost" style="flex:1;text-align:center;text-decoration:none;">📍 Mapa</a>` : ''}
       </div>
       ${restante>0 && c.tel ? `<button class="btn ghost block" style="margin-bottom:8px;" onclick="sendReminderWA('${c.id}')">📲 Avisar: hoy vence tu cuota</button>` : ''}
+      <button class="btn ghost block" style="margin-bottom:8px;" onclick="generarEstadoCuentaPDF('${c.id}', null)">🧾 Generar estado de cuenta (PDF)</button>
       ${(c.planesExtra||[]).map(p=>renderPlanExtraCard(c,p)).join('')}
       <button class="btn ghost block" style="margin:10px 0;" onclick="abrirAgregarPlan('${c.id}')">➕ Agregar otro producto a este cliente</button>
       ${renderHistorialCliente(c.id)}
@@ -1540,6 +1545,7 @@ function renderPlanExtraCard(c, p){
         <button class="btn ghost" style="flex:1;font-size:12px;" onclick="closeOverlay('ov-detail'); abrirDescuento('${c.id}','${p.id}');">🏷️ Descuento</button>
         <button class="btn ghost" style="flex:1;font-size:12px;color:var(--red);" onclick="closeOverlay('ov-detail'); abrirPerdida('${c.id}','${p.id}');">❌ Pérdida</button>
       </div>` : ''}
+      <button class="btn ghost block" style="margin-top:8px;font-size:12px;" onclick="generarEstadoCuentaPDF('${c.id}','${p.id}')">🧾 Estado de cuenta de este producto</button>
     </div>
   `;
 }
@@ -1577,6 +1583,133 @@ function eliminarPlanExtra(clientId, planId){
   renderAll();
   openClientDetail(c.id);
   toast('Producto eliminado');
+}
+
+/* ---------- Estado de cuenta (PDF) ---------- */
+function pasoFrecuencia(t){ return t.frecuencia==='semanal' ? 7 : 30; }
+function sumarDias(fechaStr, dias){
+  const d = new Date((fechaStr||todayStr())+'T00:00:00');
+  d.setDate(d.getDate() + dias);
+  return d.toISOString().slice(0,10);
+}
+function fechasRealesPorCuota(t, pagos){
+  // Recorre los pagos reales en orden y va "llenando" cuotas con ellos, igual que hace
+  // registrarPago() al cobrar — así la fecha que se muestra por cuota pagada es la fecha
+  // real en que se completó (la del pago que la cerró), no una estimación.
+  const fechas = {};
+  let acumulado = 0, n = 1;
+  pagos.forEach(p=>{
+    acumulado += p.monto;
+    while(n <= t.cuotasPagadas && (t.montoCuota||0) > 0 && acumulado >= t.montoCuota - 0.5){
+      fechas[n] = p.fecha;
+      acumulado -= t.montoCuota;
+      n++;
+    }
+  });
+  return fechas;
+}
+function generarEstadoCuentaPDF(clientId, planId){
+  const c = state.clients.find(x=>x.id===clientId);
+  if(!c) return;
+  const t = planTarget(c, planId||null);
+  const paso = pasoFrecuencia(t);
+
+  const pagos = state.payments
+    .filter(p=> p.clientId===c.id && (p.planId||null)===(planId||null) && p.tipo!=='pintura')
+    .sort((a,b)=> a.fecha.localeCompare(b.fecha));
+  const totalPagado = pagos.reduce((s,p)=>s+p.monto,0);
+  const restante = Math.max(0, (t.cuotas - t.cuotasPagadas) * t.montoCuota - (t.acumuladoParcial||0));
+  const fechasReales = fechasRealesPorCuota(t, pagos);
+
+  // Reconstruye el esquema de cuotas: las ya completadas quedan "Pagada", con la fecha real
+  // del pago que las cerró cuando se puede deducir de los pagos cargados (si no se puede
+  // deducir exacto — por ejemplo si el monto de la cuota cambió en el medio — se estima
+  // según la frecuencia del plan); la cuota vigente se marca en rojo si está vencida o
+  // tiene un pago parcial sin completar; el resto son futuras, con fecha estimada.
+  const filas = [];
+  const cuotaActualN = t.cuotasPagadas + 1;
+  for(let n=1; n<=t.cuotas; n++){
+    const fechaEstimada = sumarDias(t.fechaPago, (n - cuotaActualN) * paso);
+    if(t.perdida && n > t.cuotasPagadas){
+      filas.push({n, fecha: fechaEstimada, estado:'perdida', detalle:'Cuenta dada de baja'});
+    } else if(n <= t.cuotasPagadas){
+      const fechaReal = fechasReales[n];
+      filas.push({n, fecha: fechaReal || fechaEstimada, estado:'pagada', detalle: fechaReal ? 'Pagada' : 'Pagada (fecha estimada)'});
+    } else if(n === cuotaActualN){
+      const acumulado = t.acumuladoParcial||0;
+      if(acumulado>0){
+        filas.push({n, fecha: fechaEstimada, estado:'parcial', detalle:`Pago parcial — lleva ${fmtMoney(acumulado)} de ${fmtMoney(t.montoCuota)}`});
+      } else if(diasHasta(t.fechaPago) < 0){
+        filas.push({n, fecha: fechaEstimada, estado:'no_pago', detalle:'No pagó'});
+      } else {
+        filas.push({n, fecha: fechaEstimada, estado:'pendiente', detalle:'Pendiente'});
+      }
+    } else {
+      filas.push({n, fecha: fechaEstimada, estado:'futura', detalle:'Pendiente'});
+    }
+  }
+
+  const filasHtml = filas.map(f=>{
+    const enRojo = f.estado==='no_pago' || f.estado==='parcial';
+    const color = enRojo ? '#B3261E' : (f.estado==='pagada' ? '#2F6B33' : '#6B5E4F');
+    return `<tr>
+      <td>${f.n}</td>
+      <td>${f.fecha}</td>
+      <td>${fmtMoney(t.montoCuota)}</td>
+      <td style="color:${color};font-weight:${enRojo?'700':'400'};">${f.detalle}</td>
+    </tr>`;
+  }).join('');
+
+  const pagosHtml = pagos.length ? pagos.map(p=>`
+    <tr><td>${p.fecha}</td><td>${p.metodo||'—'}</td><td>${fmtMoney(p.monto)}</td></tr>
+  `).join('') : `<tr><td colspan="3" style="color:#6B5E4F;">Todavía no hay pagos registrados.</td></tr>`;
+
+  const prod = t.producto || c.producto || '—';
+  const win = window.open('', '_blank');
+  win.document.write(`
+    <html><head><title>Estado de cuenta - ${c.nombre}</title>
+    <style>
+      body{font-family:sans-serif;padding:36px;color:#2A2118;}
+      h1{font-size:22px;margin-bottom:2px;}
+      .muted{color:#6B5E4F;font-size:13px;}
+      .resumen{display:flex;gap:16px;margin:22px 0;flex-wrap:wrap;}
+      .box{border:1px solid #E4D8C3;border-radius:10px;padding:12px 16px;min-width:140px;}
+      .box .lbl{color:#6B5E4F;font-size:12px;margin-bottom:4px;}
+      .box .val{font-size:18px;font-weight:800;}
+      table{width:100%;border-collapse:collapse;margin-top:10px;}
+      th{text-align:left;font-size:12px;color:#6B5E4F;border-bottom:2px solid #E4D8C3;padding:6px 4px;}
+      td{padding:7px 4px;border-bottom:1px solid #EFE7D6;font-size:13px;}
+      h2{font-size:15px;margin-top:28px;margin-bottom:2px;}
+      .footer{margin-top:30px;font-size:11px;color:#6B5E4F;}
+    </style>
+    </head><body>
+    <h1>Estado de cuenta</h1>
+    <div class="muted">Generado el ${todayStr()}</div>
+    <div class="resumen">
+      <div class="box"><div class="lbl">Cliente</div><div class="val" style="font-size:15px;">${c.nombre}</div></div>
+      <div class="box"><div class="lbl">Producto</div><div class="val" style="font-size:15px;">${prod}</div></div>
+      <div class="box"><div class="lbl">Cuota</div><div class="val">${fmtMoney(t.montoCuota)}</div></div>
+      <div class="box"><div class="lbl">Total pagado</div><div class="val" style="color:#2F6B33;">${fmtMoney(totalPagado)}</div></div>
+      <div class="box"><div class="lbl">Saldo pendiente</div><div class="val" style="color:${restante>0?'#B3261E':'#2F6B33'};">${restante>0?fmtMoney(restante):'Saldado ✓'}</div></div>
+    </div>
+
+    <h2>Cuotas (${t.cuotasPagadas} de ${t.cuotas} pagadas)</h2>
+    <table>
+      <tr><th>N°</th><th>Fecha</th><th>Monto</th><th>Estado</th></tr>
+      ${filasHtml}
+    </table>
+
+    <h2>Pagos recibidos</h2>
+    <table>
+      <tr><th>Fecha</th><th>Método</th><th>Monto</th></tr>
+      ${pagosHtml}
+    </table>
+
+    <div class="footer">Las fechas de las cuotas ya pagadas son las fechas reales de los pagos recibidos. Cuando no se puede deducir con exactitud (por ejemplo si el monto de la cuota se modificó en el medio del plan), se muestra una fecha estimada según la frecuencia del plan.</div>
+    </body></html>
+  `);
+  win.document.close();
+  setTimeout(()=>win.print(), 300);
 }
 
 /* ---------- Pintura: cobro y presupuesto en PDF ---------- */
@@ -1952,6 +2085,14 @@ let activeReprogClientId = null;
 let activeReprogVisitId = null;
 let activeReprogPlanId = null;
 let modoReprog = 'reagendar';
+function proximaFechaSugerida(t){
+  // Sugiere la fecha del próximo período (un mes o una semana después de la fecha
+  // que tenía agendada), para no dejar sin querer la reagenda con la fecha de hoy.
+  const base = t.fechaPago || todayStr();
+  const d = new Date(base+'T00:00:00');
+  d.setDate(d.getDate() + (t.frecuencia==='semanal'?7:30));
+  return d.toISOString().slice(0,10);
+}
 function openReprogramar(clientId, visitId, planId){
   activeReprogClientId = clientId;
   activeReprogVisitId = visitId || null;
@@ -1964,7 +2105,7 @@ function openReprogramar(clientId, visitId, planId){
   const deudaEstaCuota = Math.max(0, (t.montoCuota||0) - (t.acumuladoParcial||0));
   document.getElementById('reprogSaldoParcialMonto').textContent = fmtMoney(deudaEstaCuota);
   document.getElementById('saldoModoSumar').checked = true;
-  document.getElementById('reprogFecha').value = selectedAgendaDate || t.fechaPago || todayStr();
+  document.getElementById('reprogFecha').value = proximaFechaSugerida(t);
   document.getElementById('moverFecha').value = selectedAgendaDate || t.fechaPago || todayStr();
   document.getElementById('esqMonto').value = t.montoCuota || '';
   document.getElementById('esqFecha').value = t.fechaPago || '';
