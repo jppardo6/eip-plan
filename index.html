@@ -337,6 +337,13 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
         <div id="gastosPorRubroMes"></div>
       </div>
       <div class="card">
+        <h3>Altas y bajas de este mes</h3>
+        <div class="rubro-row"><span>🆕 Cuentas nuevas</span><b id="altasCantidadMes">0</b></div>
+        <div class="rubro-row"><span>Representan por mes en cuotas</span><b id="altasMontoMes">$0</b></div>
+        <div class="rubro-row" style="margin-top:10px;"><span>✅ Cuentas saldadas</span><b id="saldadasCantidadMes">0</b></div>
+        <div class="rubro-row"><span>Dejan de representar por mes</span><b id="saldadasMontoMes">$0</b></div>
+      </div>
+      <div class="card">
         <h3>Clientes para renovar</h3>
         <div class="muted" style="margin-bottom:8px;">Buenos pagadores con crédito casi terminado</div>
         <div id="renovarList"></div>
@@ -1746,6 +1753,7 @@ function registrarPago(){
       t.fechaPago = d.toISOString().slice(0,10);
     }
     t.acumuladoParcial = acumulado>0 ? Math.round(acumulado*100)/100 : 0;
+    if(t.cuotasPagadas >= t.cuotas) t.fechaSaldado = todayStr();
     // Si pagó antes de la fecha, o completó la cuota en varios pagos parciales,
     // sacamos del calendario de este mes cualquier otra visita de cobro pendiente
     // de este cliente que hubiera quedado cargada (solo aplica al plan principal,
@@ -2610,11 +2618,12 @@ function renderCobranzaMes(){
 
   const list = document.getElementById('cobranzaMesList');
   if(cobranzaMesFiltro==='pendientes'){
-    list.innerHTML = pendientes.length ? pendientes.map(({c,t,restante})=>{
+    list.innerHTML = pendientes.length ? pendientes.map(({c,t})=>{
       const dias = diasHasta(t.fechaPago);
       const diasTexto = dias===0 ? 'vence hoy' : (dias>0 ? `vence en ${dias} día(s)` : `vencido hace ${Math.abs(dias)} día(s)`);
       const prod = t.producto && (c.planesExtra||[]).length ? ' · '+t.producto : '';
-      return `<div class="rubro-row" style="cursor:pointer;" onclick="closeOverlay('ov-detail'); openClientDetail('${c.id}')"><span>${c.nombre}${prod}<br><span class="muted" style="font-size:11px;">${diasTexto}</span></span><b>${fmtMoney(restante)}</b></div>`;
+      const cuotaFalta = Math.max(0, Math.round(((t.montoCuota||0) - (t.acumuladoParcial||0))*100)/100);
+      return `<div class="rubro-row" style="cursor:pointer;" onclick="closeOverlay('ov-detail'); openClientDetail('${c.id}')"><span>${c.nombre}${prod}<br><span class="muted" style="font-size:11px;">${diasTexto}</span></span><b>${fmtMoney(cuotaFalta)}</b></div>`;
     }).join('') : `<div class="muted">Ya resolviste a todos los que vencían este mes 🎉</div>`;
   } else {
     list.innerHTML = resueltos.length ? resueltos.map(info=>{
@@ -2701,6 +2710,23 @@ function renderBalance(){
     const colorBase = RUBRO_COLORS[k.split(' · ')[0]] || '#999';
     return `<div class="rubro-row"><span><span class="dot" style="background:${colorBase}"></span>${k}</span><b>${fmtMoney(porRubro[k])}</b></div>`;
   }).join('') : `<div class="muted">Sin gastos cargados este mes.</div>`;
+
+  // Altas: clientes-muebles cargados este mes (plan principal). Bajas: planes (principal o extra)
+  // que se terminaron de pagar este mes (fechaSaldado, marcada al completar la última cuota).
+  const altasMes = state.clients.filter(c=> c.type==='muebles' && c.fechaCreacion && c.fechaCreacion.startsWith(mesActualBal));
+  const montoAltasMes = altasMes.reduce((s,c)=> s + (c.montoCuota||0), 0);
+  document.getElementById('altasCantidadMes').textContent = altasMes.length;
+  document.getElementById('altasMontoMes').textContent = fmtMoney(montoAltasMes);
+
+  const saldadasMes = [];
+  state.clients.filter(c=>c.type==='muebles').forEach(c=>{
+    planesDelCliente(c).forEach(t=>{
+      if(t.fechaSaldado && t.fechaSaldado.startsWith(mesActualBal)) saldadasMes.push(t);
+    });
+  });
+  const montoSaldadasMes = saldadasMes.reduce((s,t)=> s + (t.montoCuota||0), 0);
+  document.getElementById('saldadasCantidadMes').textContent = saldadasMes.length;
+  document.getElementById('saldadasMontoMes').textContent = fmtMoney(montoSaldadasMes);
 
   const buenosPagadores = pendientesPlanes.filter(({t})=> t.cuotas>0 && (t.cuotas-t.cuotasPagadas)<=2);
   document.getElementById('renovarList').innerHTML = buenosPagadores.length ? buenosPagadores.map(({c,t})=>`
