@@ -400,6 +400,11 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
         <div class="muted" style="margin-bottom:10px;">Historial de cierres guardados: <b id="cantidadCierres">0</b></div>
       </div>
       <div class="card">
+        <h3>Copia de seguridad</h3>
+        <div class="muted" style="margin-bottom:10px;">Descarga un archivo con todos tus datos tal cual están ahora mismo. Hacelo de vez en cuando (por ejemplo, una vez por semana) para tener siempre un respaldo propio, además de lo que está guardado en el servidor.</div>
+        <button class="btn wood block" onclick="descargarBackup()">💾 Descargar copia de seguridad</button>
+      </div>
+      <div class="card">
         <h3>Proveedores (cuenta corriente)</h3>
         <div class="muted" style="margin-bottom:10px;">Lo que les comprás vs. los servicios que les prestás — el saldo se compensa una vez al mes.</div>
         <div id="proveedoresList"></div>
@@ -988,9 +993,33 @@ function toast(msg){
 /* ---------- Persistencia (Firebase, compartida entre todos) ---------- */
 const docRef = db.collection('negocio').doc('estado');
 let dataListenerAttached = false;
+// Guarda el último documento que sabemos que está en el servidor (lo actualiza el
+// listener en tiempo real). Sirve para detectar si, entre que se abrió la pantalla y
+// que se guarda algo, otro dispositivo ya guardó un cambio que todavía no llegó acá —
+// típicamente cuando la app está abierta en el celular y la PC al mismo tiempo. Sin
+// esto, el guardado siguiente pisaría ese cambio entero (todo el documento se
+// reemplaza en cada guardado, no solo lo que cambió).
+let lastSyncedDocJSON = null;
 
 async function saveState(){
-  try{ await docRef.set(state); }
+  try{
+    const actual = await docRef.get();
+    if(actual.exists && lastSyncedDocJSON!==null){
+      const actualJSON = JSON.stringify(actual.data());
+      if(actualJSON !== lastSyncedDocJSON){
+        // Hay un cambio más nuevo (de otro dispositivo) que todavía no se había
+        // cargado en esta pantalla. Para no perderlo, se cancela este guardado y se
+        // trae lo último — hay que repetir la acción que se acababa de hacer.
+        state = Object.assign(state, actual.data());
+        lastSyncedDocJSON = actualJSON;
+        renderAll();
+        alert('Se detectó un cambio más nuevo guardado desde otro dispositivo, que todavía no se había cargado en esta pantalla. Para no pisarlo, se canceló este último guardado y se actualizó todo con lo más reciente. Repetí la acción que acabás de hacer.');
+        return;
+      }
+    }
+    await docRef.set(state);
+    lastSyncedDocJSON = JSON.stringify(state);
+  }
   catch(e){ console.error('storage error', e); }
 }
 function attachDataListener(){
@@ -999,12 +1028,22 @@ function attachDataListener(){
   docRef.onSnapshot(doc=>{
     if(doc.exists){
       state = Object.assign(state, doc.data());
+      lastSyncedDocJSON = JSON.stringify(doc.data());
     } else {
       seedDemoData();
       saveState();
     }
     renderAll();
   }, err=>{ console.error('sync error', err); toast('Sin conexión — mostrando la última copia guardada'); });
+}
+function descargarBackup(){
+  const blob = new Blob([JSON.stringify(state, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `eip-plan-backup-${todayStr()}.json`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('Copia de seguridad descargada');
 }
 
 function doLogin(){
