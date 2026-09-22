@@ -752,20 +752,22 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
       </div>
 
       <div id="modoReagendar">
-        <div class="helper">No pagó la cuota <span id="reprogSaldoParcialMonto">—</span> este período. ¿Qué hacemos con esa deuda?</div>
-        <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:8px;">
-          <input type="radio" name="saldoParcialModo" value="sumar" id="saldoModoSumar" checked style="margin-top:3px;">
-          <span>Cobrar dos juntas el próximo mes</span>
-        </label>
-        <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:8px;">
-          <input type="radio" name="saldoParcialModo" value="repartir" id="saldoModoRepartir" style="margin-top:3px;">
-          <span>Dividir esa deuda entre las cuotas que quedan (sube un poco el monto de cada una)</span>
-        </label>
-        <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:12px;">
-          <input type="radio" name="saldoParcialModo" value="aplazar" id="saldoModoAplazar" style="margin-top:3px;">
-          <span>Aplazar un mes (se agrega una cuota más al final, el monto no cambia)</span>
-        </label>
-        <div class="field"><label>Nueva fecha de cobro</label><input type="date" id="reprogFecha"></div>
+        <div class="field"><label>Nueva fecha de cobro</label><input type="date" id="reprogFecha" onchange="actualizarVisibilidadOpcionesReagendar()"></div>
+        <div id="reprogOpcionesDeuda">
+          <div class="helper">No pagó la cuota <span id="reprogSaldoParcialMonto">—</span> este período. ¿Qué hacemos con esa deuda?</div>
+          <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:8px;">
+            <input type="radio" name="saldoParcialModo" value="sumar" id="saldoModoSumar" checked style="margin-top:3px;">
+            <span>Cobrar dos juntas el próximo mes</span>
+          </label>
+          <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:8px;">
+            <input type="radio" name="saldoParcialModo" value="repartir" id="saldoModoRepartir" style="margin-top:3px;">
+            <span>Dividir esa deuda entre las cuotas que quedan (sube un poco el monto de cada una)</span>
+          </label>
+          <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:12px;">
+            <input type="radio" name="saldoParcialModo" value="aplazar" id="saldoModoAplazar" style="margin-top:3px;">
+            <span>Aplazar un mes (se agrega una cuota más al final, el monto no cambia)</span>
+          </label>
+        </div>
       </div>
 
       <div id="modoMover" style="display:none;">
@@ -2113,7 +2115,24 @@ function openReprogramar(clientId, visitId, planId){
   document.getElementById('reprogAdvertencia').checked = false;
   setModoReprog('reagendar');
   actualizarResumenEsquema();
+  actualizarVisibilidadOpcionesReagendar();
   openOverlay('ov-reprogramar');
+}
+function actualizarVisibilidadOpcionesReagendar(){
+  // Las 3 opciones de qué hacer con la deuda (sumar/repartir/aplazar) solo tienen sentido
+  // si la nueva fecha empuja el cobro a otro mes (un mes realmente salteado). Si la nueva
+  // fecha cae dentro del mismo mes que ya tenía agendado, es solo mover el día — no hay
+  // deuda de un mes entero que resolver, así que se ocultan y se guarda como "sumar" (no
+  // cambia nada más que la fecha).
+  const c = state.clients.find(x=>x.id===activeReprogClientId);
+  if(!c) return;
+  const t = planTarget(c, activeReprogPlanId);
+  const nueva = document.getElementById('reprogFecha').value;
+  const mesOriginal = (t.fechaPago||'').slice(0,7);
+  const mesNuevo = (nueva||'').slice(0,7);
+  const mismomes = !nueva || !mesOriginal || mesNuevo===mesOriginal;
+  document.getElementById('reprogOpcionesDeuda').style.display = mismomes ? 'none' : 'block';
+  if(mismomes) document.getElementById('saldoModoSumar').checked = true;
 }
 function setModoReprog(m){
   modoReprog = m;
