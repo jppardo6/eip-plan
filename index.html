@@ -2350,9 +2350,28 @@ function setAgendaDate(d){
   renderAgenda();
 }
 function openAgendaAddMenu(){ openOverlay('ov-agenda-menu'); }
+function sincronizarVencidosEnAgenda(){
+  // A cualquier cliente (plan principal) cuya cuota ya venció y que no tenga ninguna visita
+  // pendiente cargada en la agenda (de hoy ni de ningún día atrasado), se le crea una visita
+  // automáticamente en su fecha de vencimiento real. Así, gracias al bloque de "atrasados"
+  // de más abajo, queda apareciendo todos los días en el plan de hoy hasta que se le dé
+  // una resolución (pago, o reagendar/sin pago) — no hace falta cargarlo a mano.
+  let creo = false;
+  state.clients.filter(c=>c.type==='muebles' && !c.perdida).forEach(c=>{
+    const restante = (c.cuotas - c.cuotasPagadas) * c.montoCuota - (c.acumuladoParcial||0);
+    if(restante<=0) return;
+    if(diasHasta(c.fechaPago) >= 0) return; // todavía no vence
+    const yaTiene = state.visits.some(v=> v.clientId===c.id && !v.done);
+    if(yaTiene) return;
+    state.visits.push({id:uid(), clientId:c.id, hora:'', fecha:c.fechaPago, done:false, orden:Date.now(), km:0});
+    creo = true;
+  });
+  if(creo) saveState();
+}
 function renderAgenda(){
   if(!selectedAgendaDate) selectedAgendaDate = todayStr();
   document.getElementById('agendaDateInput').value = selectedAgendaDate;
+  if(selectedAgendaDate===todayStr()) sincronizarVencidosEnAgenda();
 
   const list = document.getElementById('agendaList');
   const completadasBox = document.getElementById('agendaCompletadas');
