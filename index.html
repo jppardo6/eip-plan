@@ -1419,7 +1419,13 @@ function guardarEdicionCliente(){
     if(nuevoCuotas>0) c.cuotas = nuevoCuotas;
     c.cuotasPagadas = Math.max(0, Math.min(c.cuotas, nuevoCuotasPagadas));
     c.acumuladoParcial = Math.max(0, nuevoAcumulado);
-    if(nuevaFechaPago) c.fechaPago = nuevaFechaPago;
+    if(nuevaFechaPago){
+      c.fechaPago = nuevaFechaPago;
+      // La fecha se corrigió a mano: cualquier visita pendiente que hubiera quedado
+      // colgada con la fecha vieja (por ejemplo la de "vencido" que se crea sola) ya no
+      // corresponde — se resuelve, y si sigue vencido se vuelve a crear sola en la agenda.
+      limpiarVisitasDelMesParaCliente(c.id);
+    }
   } else {
     c.tel = document.getElementById('ecTelP').value.trim();
     c.descripcion = document.getElementById('ecDesc').value.trim();
@@ -1835,15 +1841,12 @@ function openPago(planId){
    cuota queda saldada (ya sea porque pagó antes de la fecha o porque
    completó la cuota en varios pagos parciales). */
 function limpiarVisitasDelMesParaCliente(clientId){
-  const hoy = todayStr();
-  const mesActual = hoy.slice(0,7); // YYYY-MM
-  state.visits = state.visits.filter(v=>{
-    if(v.clientId!==clientId) return true; // no toca otros clientes/fletes
-    if(v.done) return true; // ya completada, se deja como historial
-    const mesVisita = (v.fecha||hoy).slice(0,7);
-    if(mesVisita===mesActual) return false; // se saca del calendario del mes
-    return true;
-  });
+  // Saca del calendario cualquier visita pendiente de este cliente, sea de este mes,
+  // de un mes anterior (por ejemplo, la que se crea sola cuando estaba vencido) o de
+  // un mes futuro. No importa la fecha: si se le acaba de registrar algo (pago, reagenda,
+  // pérdida), la visita pendiente que tuviera cargada queda resuelta y desaparece de la
+  // agenda; si sigue debiendo, se vuelve a crear sola cuando corresponda.
+  state.visits = state.visits.filter(v=> v.clientId!==clientId || v.done);
 }
 function mostrarConfirmacionPago(c, tituloResultado, msg){
   const wa = 'https://wa.me/' + (c.tel||'').replace(/\D/g,'') + '?text=' + encodeURIComponent(msg);
@@ -1855,11 +1858,12 @@ function mostrarConfirmacionPago(c, tituloResultado, msg){
       <a href="${wa}" target="_blank" class="btn green block" style="display:block;text-align:center;text-decoration:none;">Enviar por WhatsApp</a>
     </div>`;
 }
-// Marca como resuelta la visita de hoy de este cliente (si la hay), para que
-// deje de aparecer entre los pendientes de la Agenda apenas se le registra algo.
+// Marca como resuelta cualquier visita pendiente de este cliente (sea de hoy, de un día
+// atrasado o de una fecha futura), para que deje de aparecer entre los pendientes de la
+// Agenda apenas se le registra algo. No se limita a la fecha de hoy porque las visitas de
+// "vencido" que se crean solas pueden tener una fecha de hace semanas o meses.
 function resolverVisitaDeHoy(clientId){
-  const vHoy = state.visits.find(x=> x.clientId===clientId && !x.done && (x.fecha===selectedAgendaDate || x.fecha===todayStr()));
-  if(vHoy) vHoy.done = true;
+  state.visits.filter(x=> x.clientId===clientId && !x.done).forEach(x=> x.done = true);
 }
 let pendingPagoParcial = null;
 function registrarPago(){
@@ -1944,6 +1948,7 @@ function confirmarDecisionParcial(modoForzado){
   const modo = modoForzado || document.querySelector('input[name="decParcialModo"]:checked').value;
 
   state.payments.push({id:uid(), clientId:c.id, planId:p.planId, monto:p.monto, metodo:p.metodo, tipo:'parcial', fecha: todayStr()});
+  resolverVisitaDeHoy(c.id); // resuelve la visita pendiente ANTES de, eventualmente, crear la de "seguir cobrando"
 
   let msgExtra = '';
   if(modo==='dividir'){
@@ -1965,7 +1970,6 @@ function confirmarDecisionParcial(modoForzado){
     }
   }
 
-  resolverVisitaDeHoy(c.id);
   saveState();
   closeOverlay('ov-decision-parcial');
 
@@ -2219,13 +2223,11 @@ function reprogramarPago(){
     c.puntosMalos = (c.puntosMalos||0) + 1;
   }
 
-  // Marca como resuelta la visita puntual desde la que se abrió (si vino de la Agenda),
-  // y si no, la primera visita pendiente de ese cliente para hoy — así desaparece
-  // de la lista de "hoy" apenas se reagenda o se registra como sin pago.
-  const v = activeReprogVisitId
-    ? state.visits.find(x=>x.id===activeReprogVisitId)
-    : state.visits.find(x=>x.clientId===c.id && !x.done && (x.fecha===selectedAgendaDate || x.fecha===todayStr()));
-  if(v){ v.done = true; v.resultado = 'sin_pago'; }
+  // Marca como resueltas todas las visitas pendientes de este cliente (la puntual desde la
+  // que se abrió, si vino de la Agenda, y cualquier otra que hubiera quedado colgada — por
+  // ejemplo la de "vencido" que se crea sola, que puede tener una fecha de hace semanas).
+  // Así desaparece de la agenda apenas se reagenda o se registra como sin pago.
+  state.visits.filter(x=>x.clientId===c.id && !x.done).forEach(x=>{ x.done = true; x.resultado = 'sin_pago'; });
   activeReprogVisitId = null;
   saveState();
   closeOverlay('ov-reprogramar');
