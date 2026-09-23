@@ -397,7 +397,12 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
       </div>
       <div class="card">
         <h3>Cerrar caja del día</h3>
-        <div class="muted" style="margin-bottom:10px;">Historial de cierres guardados: <b id="cantidadCierres">0</b></div>
+        <div class="muted" style="margin-bottom:10px;">Si no la cerrás vos, se cierra sola apenas abrís la app al día siguiente, con los datos tal cual quedaron. Historial de cierres guardados: <b id="cantidadCierres">0</b></div>
+      </div>
+      <div class="card">
+        <h3>Gastos</h3>
+        <div class="muted" style="margin-bottom:10px;">Cargá un gasto (Personales, Empleado, Insumos o Combustible) sin tener que ir a Caja.</div>
+        <button class="btn wood block" onclick="openExpense()">+ Cargar gasto</button>
       </div>
       <div class="card">
         <h3>Copia de seguridad</h3>
@@ -943,7 +948,7 @@ let state = {
   objetivoClientesNuevos: 0,
   cierres: [],  // {id, fecha, vendido, cobrado, gastado, balance, hora}
   reprogramaciones: [], // {id, clientId, fecha, fechaAnterior, fechaNueva, modo}
-  subcategoriasPersonales: ['Casa','Chicos','Almacén'],
+  subcategoriasPersonales: ['Casa','Chicos','Almacén'], // legado: ver migrarSubcategoriasGastos()
   proveedores: [], // {id, nombre}
   comprasProveedor: [], // {id, proveedorId, producto, costo, flete, fecha}
   serviciosProveedor: [], // {id, proveedorId, descripcion, monto, fecha}
@@ -1041,8 +1046,22 @@ function attachDataListener(){
       seedDemoData();
       saveState();
     }
+    migrarSubcategoriasGastos();
+    verificarCierresAutomaticos();
     renderAll();
   }, err=>{ console.error('sync error', err); toast('Sin conexión — mostrando la última copia guardada'); });
+}
+// Convierte el viejo state.subcategoriasPersonales (una sola lista, solo para el rubro
+// "Personales") en state.subcategoriasGastos, un objeto con una lista propia por cada rubro
+// (Personales/Empleado/Insumos/Combustible), sin perder las subcategorías que ya se habían
+// cargado. Se corre una sola vez (si ya existe subcategoriasGastos, no hace nada).
+function migrarSubcategoriasGastos(){
+  if(state.subcategoriasGastos) return;
+  state.subcategoriasGastos = {
+    Personales: (state.subcategoriasPersonales && state.subcategoriasPersonales.length) ? state.subcategoriasPersonales.slice() : ['Casa','Chicos','Almacén'],
+    Empleado: [], Insumos: [], Combustible: []
+  };
+  saveState();
 }
 function descargarBackup(){
   const blob = new Blob([JSON.stringify(state, null, 2)], {type:'application/json'});
@@ -1346,15 +1365,33 @@ function renderClientes(filterText, filterType){
     list.innerHTML = `<div class="empty"><div class="big">👥</div>Todavía no hay clientes acá.<br>Tocá el botón + para cargar el primero.</div>`;
     return;
   }
+
+  // "No resueltos" primero: mismo criterio que "Faltan" en Cobranza de este mes (Balance),
+  // para no tener que entrar a Balance a ver quién sigue pendiente de cobrar este mes.
+  // Los demás (al día, resueltos este mes, o sin nada que vencer todavía) quedan al final.
+  const mesActualCli = todayStr().slice(0,7);
+  const noResueltoIds = new Set();
+  todosLosPlanesPendientes().forEach(({c:cc,t})=>{ if((t.fechaPago||'').startsWith(mesActualCli)) noResueltoIds.add(cc.id); });
+  items = items.map((c,i)=>({c, i})).sort((a,b)=>{
+    const an = a.c.type==='muebles' && noResueltoIds.has(a.c.id) ? 0 : 1;
+    const bn = b.c.type==='muebles' && noResueltoIds.has(b.c.id) ? 0 : 1;
+    return an - bn || a.i - b.i;
+  }).map(x=>x.c);
+
   list.innerHTML = items.map(c=>{
     let right = '';
     let semaforoDot = '';
     if(c.type==='muebles'){
-      const restante = (c.cuotas - c.cuotasPagadas) * c.montoCuota;
-      if(restante>0){
-        const dias = diasHasta(c.fechaPago);
+      const planesPendientes = planesDelCliente(c).filter(t=> (t.cuotas - t.cuotasPagadas) * t.montoCuota - (t.acumuladoParcial||0) > 0);
+      if(planesPendientes.length){
+        const cuotaTotal = planesPendientes.reduce((s,t)=> s + Math.max(0, (t.montoCuota||0) - (t.acumuladoParcial||0)), 0);
+        const proximo = planesPendientes.reduce((min,t)=> !min || (t.fechaPago||'') < (min.fechaPago||'') ? t : min, null);
+        const dias = diasHasta(proximo.fechaPago);
         const diasTexto = dias===0 ? 'vence hoy' : (dias>0 ? `vence en ${dias} día(s)` : `vencido hace ${Math.abs(dias)} día(s)`);
-        right = `<div class="client-debt">Debe ${fmtMoney(restante)}<br><span class="muted" style="font-size:11px;">${diasTexto}</span></div>`;
+        const noResuelto = noResueltoIds.has(c.id);
+        const clase = noResuelto ? 'client-debt' : 'client-ok';
+        const etiqueta = noResuelto ? '' : 'Al día · ';
+        right = `<div class="${clase}">${fmtMoney(cuotaTotal)}<br><span class="muted" style="font-size:11px;">${etiqueta}${diasTexto}</span></div>`;
         const b = bucketDe(dias);
         if(b) semaforoDot = `<span class="dot" style="background:${BUCKET_INFO[b].color};margin-right:6px;"></span>`;
       } else if(c.perdida){
@@ -1885,9 +1922,9 @@ function sendReminderWA(clientId){
 }
 
 /* ---------- Pagos ---------- */
-function abrirPagoDesdeAgenda(clientId){
+function abrirPagoDesdeAgenda(clientId, planId){
   activeDetailClientId = clientId;
-  activeDetailPlanId = null;
+  activeDetailPlanId = planId || null;
   openPago();
 }
 function openPago(planId){
@@ -2293,11 +2330,12 @@ function reprogramarPago(){
     c.puntosMalos = (c.puntosMalos||0) + 1;
   }
 
-  // Marca como resueltas todas las visitas pendientes de este cliente (la puntual desde la
-  // que se abrió, si vino de la Agenda, y cualquier otra que hubiera quedado colgada — por
-  // ejemplo la de "vencido" que se crea sola, que puede tener una fecha de hace semanas).
+  // Marca como resueltas las visitas pendientes de ESTE plan puntual (la desde la que se
+  // abrió, si vino de la Agenda, y cualquier otra que hubiera quedado colgada — por ejemplo
+  // la de "vencido" que se crea sola, que puede tener una fecha de hace semanas). Se filtra
+  // por planId para no tocar la agenda de otro producto del mismo cliente si tiene más de uno.
   // Así desaparece de la agenda apenas se reagenda o se registra como sin pago.
-  state.visits.filter(x=>x.clientId===c.id && !x.done).forEach(x=>{ x.done = true; x.resultado = 'sin_pago'; });
+  state.visits.filter(x=>x.clientId===c.id && (x.planId||null)===activeReprogPlanId && !x.done).forEach(x=>{ x.done = true; x.resultado = 'sin_pago'; });
   activeReprogVisitId = null;
   saveState();
   closeOverlay('ov-reprogramar');
@@ -2423,20 +2461,25 @@ function setAgendaDate(d){
 }
 function openAgendaAddMenu(){ openOverlay('ov-agenda-menu'); }
 function sincronizarVencidosEnAgenda(){
-  // A cualquier cliente (plan principal) cuya cuota ya venció y que no tenga ninguna visita
-  // pendiente cargada en la agenda (de hoy ni de ningún día atrasado), se le crea una visita
-  // automáticamente en su fecha de vencimiento real. Así, gracias al bloque de "atrasados"
-  // de más abajo, queda apareciendo todos los días en el plan de hoy hasta que se le dé
-  // una resolución (pago, o reagendar/sin pago) — no hace falta cargarlo a mano.
+  // A cualquier cliente (plan principal o producto extra) cuya cuota venza hoy o ya haya
+  // vencido, y que no tenga ninguna visita pendiente cargada en la agenda para ese plan
+  // (de hoy ni de ningún día atrasado), se le crea una visita automáticamente en su fecha
+  // de vencimiento real. Así, gracias al bloque de "atrasados" de más abajo, queda
+  // apareciendo todos los días en el plan de hoy hasta que se le dé una resolución (pago,
+  // o reagendar/sin pago) — no hace falta cargarlo a mano. Se revisa cada plan del cliente
+  // por separado (planTarget) para que los productos extra también entren.
   let creo = false;
   state.clients.filter(c=>c.type==='muebles' && !c.perdida).forEach(c=>{
-    const restante = (c.cuotas - c.cuotasPagadas) * c.montoCuota - (c.acumuladoParcial||0);
-    if(restante<=0) return;
-    if(diasHasta(c.fechaPago) >= 0) return; // todavía no vence
-    const yaTiene = state.visits.some(v=> v.clientId===c.id && !v.done);
-    if(yaTiene) return;
-    state.visits.push({id:uid(), clientId:c.id, hora:'', fecha:c.fechaPago, done:false, orden:Date.now(), km:0});
-    creo = true;
+    planesDelCliente(c).forEach(t=>{
+      const restante = (t.cuotas - t.cuotasPagadas) * t.montoCuota - (t.acumuladoParcial||0);
+      if(restante<=0) return;
+      if(diasHasta(t.fechaPago) > 0) return; // todavía no vence (mañana en adelante)
+      const planId = t===c ? null : t.id;
+      const yaTiene = state.visits.some(v=> v.clientId===c.id && (v.planId||null)===planId && !v.done);
+      if(yaTiene) return;
+      state.visits.push({id:uid(), clientId:c.id, planId, hora:'', fecha:t.fechaPago, done:false, orden:Date.now(), km:0});
+      creo = true;
+    });
   });
   if(creo) saveState();
 }
@@ -2536,10 +2579,11 @@ function itemToHTML(item, draggable, atrasado){
   }
   const c = state.clients.find(x=>x.id===v.clientId);
   if(!c) return '';
+  const t = c.type==='muebles' ? planTarget(c, v.planId||null) : null;
   const tagClass = c.type;
   const tagLabel = c.type==='muebles'?'Muebles':'Pintura';
-  let metaLine = c.type==='muebles' ? `Cuota ${fmtMoney(c.montoCuota)}` : (c.descripcion||'');
-  const restante = c.type==='muebles' ? (c.cuotas - c.cuotasPagadas) * c.montoCuota : 0;
+  let metaLine = c.type==='muebles' ? `Cuota ${fmtMoney(t.montoCuota)}${t!==c && t.producto ? ' · '+t.producto : ''}` : (c.descripcion||'');
+  const restante = c.type==='muebles' ? (t.cuotas - t.cuotasPagadas) * t.montoCuota - (t.acumuladoParcial||0) : 0;
   return `<div class="visit ${v.done?'done':''}${claseAtrasado}" data-itemid="${v.id}" data-itemtype="visit">
     ${handle}
     <div class="check" onclick="toggleVisit('${v.id}')">${v.done?'✓':''}</div>
@@ -2551,8 +2595,8 @@ function itemToHTML(item, draggable, atrasado){
       </div>
       <div class="visit-meta">${v.hora ? '⏰ '+v.hora+' · ' : ''}${metaLine} · ${v.km||0} km</div>
       <div class="visit-actions">
-        ${c.type==='muebles' && restante>0 && !v.done ? `<button class="btn wood" title="Registrar pago" onclick="abrirPagoDesdeAgenda('${c.id}')">💰 Pagar</button>` : ''}
-        ${c.type==='muebles' && restante>0 && !v.done ? `<button class="btn ghost" title="No pagó / reagendar" onclick="openReprogramar('${c.id}','${v.id}')">🚫 Sin pago</button>` : ''}
+        ${c.type==='muebles' && restante>0 && !v.done ? `<button class="btn wood" title="Registrar pago" onclick="abrirPagoDesdeAgenda('${c.id}','${v.planId||''}')">💰 Pagar</button>` : ''}
+        ${c.type==='muebles' && restante>0 && !v.done ? `<button class="btn ghost" title="No pagó / reagendar" onclick="openReprogramar('${c.id}','${v.id}','${v.planId||''}')">🚫 Sin pago</button>` : ''}
         ${!(c.type==='muebles' && restante>0) ? `<button class="btn ghost" title="Reagendar" onclick="openReagendarItem('${v.id}','visit')">🗓️ Reagendar</button>` : ''}
         <div class="visit-actions-icons">
           ${c.loc ? `<button class="btn ghost icon" title="Ver en mapa" onclick="window.open('https://maps.google.com/?q=${c.loc}','_blank')">🗺️</button>` : ''}
@@ -2620,27 +2664,32 @@ function openExpense(){ editingGastoId = null; document.getElementById('gastoMon
 function actualizarCamposGasto(){
   const rubro = document.getElementById('gastoRubro').value;
   document.getElementById('gastoLitrosField').style.display = rubro==='Combustible' ? 'block' : 'none';
-  document.getElementById('gastoSubcatField').style.display = rubro==='Personales' ? 'block' : 'none';
-  if(rubro==='Personales') renderOpcionesSubcategoria();
+  document.getElementById('gastoSubcatField').style.display = 'block';
+  renderOpcionesSubcategoria();
 }
 function renderOpcionesSubcategoria(){
+  const rubro = document.getElementById('gastoRubro').value;
+  const lista = (state.subcategoriasGastos && state.subcategoriasGastos[rubro]) || [];
   const sel = document.getElementById('gastoSubcategoria');
   const actual = sel.value;
-  sel.innerHTML = state.subcategoriasPersonales.map(s=>`<option value="${s}">${s}</option>`).join('') + `<option value="__nueva__">+ Crear nueva subcategoría</option>`;
-  if(state.subcategoriasPersonales.includes(actual)) sel.value = actual;
+  sel.innerHTML = lista.map(s=>`<option value="${s}">${s}</option>`).join('') + `<option value="__nueva__">+ Crear nueva subcategoría</option>`;
+  if(lista.includes(actual)) sel.value = actual;
 }
 function toggleLitrosField(){ actualizarCamposGasto(); }
 function manejarSubcategoriaSelect(){
+  const rubro = document.getElementById('gastoRubro').value;
   const sel = document.getElementById('gastoSubcategoria');
   if(sel.value==='__nueva__'){
     const nueva = prompt('Nombre de la nueva subcategoría:');
+    if(!state.subcategoriasGastos) state.subcategoriasGastos = {Personales:[],Empleado:[],Insumos:[],Combustible:[]};
+    const lista = state.subcategoriasGastos[rubro] = state.subcategoriasGastos[rubro] || [];
     if(nueva && nueva.trim()){
-      state.subcategoriasPersonales.push(nueva.trim());
+      lista.push(nueva.trim());
       saveState();
       renderOpcionesSubcategoria();
       sel.value = nueva.trim();
     } else {
-      sel.value = state.subcategoriasPersonales[0] || '__nueva__';
+      sel.value = lista[0] || '__nueva__';
     }
   }
 }
@@ -2653,8 +2702,7 @@ function editarGasto(id){
   actualizarCamposGasto();
   document.getElementById('gastoMonto').value = g.monto;
   document.getElementById('gastoNota').value = g.nota || '';
-  if(g.rubro==='Personales' && g.subcategoria){
-    renderOpcionesSubcategoria();
+  if(g.subcategoria){
     document.getElementById('gastoSubcategoria').value = g.subcategoria;
   }
   openOverlay('ov-gasto');
@@ -2663,7 +2711,8 @@ function guardarGasto(){
   const rubro = document.getElementById('gastoRubro').value;
   const monto = Number(document.getElementById('gastoMonto').value||0);
   const litros = Number(document.getElementById('gastoLitros').value||0);
-  const subcategoria = rubro==='Personales' ? document.getElementById('gastoSubcategoria').value : '';
+  let subcategoria = document.getElementById('gastoSubcategoria').value;
+  if(subcategoria==='__nueva__') subcategoria = '';
   let nota = document.getElementById('gastoNota').value;
   if(!monto){ toast('Ingresá un monto'); return; }
   if(rubro==='Combustible' && litros){ nota = (nota ? nota+' · ' : '') + litros+' litros'; }
@@ -2795,6 +2844,36 @@ function cerrarCaja(){
     hora: ahora.getHours().toString().padStart(2,'0')+':'+ahora.getMinutes().toString().padStart(2,'0')});
   saveState(); renderCaja();
   toast('Caja del día cerrada: '+fmtMoney(balance));
+}
+// Cierre automático: si quedaron días anteriores sin cerrar (porque no se abrió la app justo
+// a la medianoche, o directamente no se tocó "Cerrar caja"), se cierran solos apenas se abre
+// la app de nuevo, con los datos tal cual quedaron cargados hasta el final de ese día. Solo
+// mira desde el último cierre guardado en adelante (o, si nunca se cerró nada, desde ayer),
+// así no reescribe ni inventa cierres de un pasado más viejo. Tope de 60 días por las dudas,
+// para no quedar en un loop larguísimo si hace mucho que no se abre la app.
+function verificarCierresAutomaticos(){
+  const hoy = todayStr();
+  const fechasCerradas = new Set(state.cierres.map(c=>c.fecha));
+  let desde;
+  if(state.cierres.length){
+    const ultimaFecha = state.cierres.map(c=>c.fecha).sort().slice(-1)[0];
+    desde = sumarDias(ultimaFecha, 1);
+  } else {
+    desde = sumarDias(hoy, -1);
+  }
+  let fecha = desde, creado = false, dias = 0;
+  while(fecha < hoy && dias < 60){
+    if(!fechasCerradas.has(fecha)){
+      const cobrado = state.payments.filter(p=>p.fecha===fecha).reduce((s,p)=>s+p.monto,0);
+      const vendido = state.sales.filter(s=>s.fecha===fecha).reduce((s,x)=>s+x.monto,0) + cobrado;
+      const gastado = state.expenses.filter(e=>e.fecha===fecha).reduce((s,e)=>s+e.monto,0);
+      state.cierres.push({id:uid(), fecha, vendido, cobrado, gastado, balance: vendido-gastado, hora:'00:00', automatico:true});
+      creado = true;
+    }
+    fecha = sumarDias(fecha, 1);
+    dias++;
+  }
+  if(creado) saveState();
 }
 
 /* ---------- Más: Scorecard ---------- */
