@@ -300,6 +300,11 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
         <span id="clientesResumenCounts" style="font-size:12.5px;font-weight:700;"></span>
       </div>
       <div id="clientList"></div>
+      <div class="card" style="margin-top:14px;">
+        <h3>Clientes para renovar</h3>
+        <div class="muted" style="margin-bottom:8px;">Buenos pagadores con crédito casi terminado</div>
+        <div id="renovarList"></div>
+      </div>
     </section>
 
     <!-- CAJA -->
@@ -322,10 +327,6 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
         <h3>Gastos por rubro (hoy)</h3>
         <div id="rubrosHoy"></div>
       </div>
-      <div class="card">
-        <h3>Objetivo del mes</h3>
-        <div id="metaMes"></div>
-      </div>
       <button class="btn wood block" onclick="openExpense()">+ Cargar gasto</button>
       <div style="height:10px;"></div>
       <button class="btn ghost block" onclick="cerrarCaja()">🔒 Cerrar caja de hoy</button>
@@ -335,8 +336,21 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
     <!-- BALANCE -->
     <section id="sec-balance">
       <div class="card">
+        <h3>Estado general del negocio</h3>
+        <div class="muted" style="margin-bottom:8px;">Activos (lo que tenés y te deben) contra pasivos (lo que debés)</div>
+        <div id="estadoGeneralBox"></div>
+      </div>
+      <div class="card">
+        <h3>Efectivo y transferencia</h3>
+        <div id="saldoCajaBox"></div>
+      </div>
+      <div class="card">
         <h3>Balance total (deuda pendiente de todos los clientes)</h3>
         <div style="font-size:24px;font-weight:800;" id="scoreBalanceTotal">$0</div>
+      </div>
+      <div class="card">
+        <h3>Objetivo del mes</h3>
+        <div id="metaMes"></div>
       </div>
       <div class="card">
         <h3>Semáforo de vencimientos</h3>
@@ -346,33 +360,32 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
         <div id="scoreSemaforo"></div>
       </div>
       <div class="card">
-        <h3>Cobranza de este mes</h3>
-        <div class="muted" style="margin-bottom:8px;">Quién todavía falta cobrar/resolver este mes, y quién ya quedó resuelto (cobrado, saldado o pospuesto para otro mes)</div>
-        <div class="filters" id="cobranzaMesFilters">
-          <div class="chip on" data-k="pendientes" onclick="filterCobranzaMes(this,'pendientes')">🕒 Faltan</div>
-          <div class="chip" data-k="resueltos" onclick="filterCobranzaMes(this,'resueltos')">✅ Resueltos</div>
-        </div>
-        <div id="cobranzaMesList"></div>
-      </div>
-      <div class="card">
         <h3>Ventas y cobros — últimos 5 meses</h3>
         <div id="scoreMeses"></div>
       </div>
       <div class="card">
         <h3>Gastos por rubro — este mes</h3>
+        <div class="muted" style="margin-bottom:8px;">Incluye lo condonado en incobrables y descuentos, como un rubro más</div>
+        <div id="gastosPorRubroBarra" style="display:flex;height:14px;border-radius:8px;overflow:hidden;margin-bottom:12px;background:rgba(255,255,255,0.06);"></div>
         <div id="gastosPorRubroMes"></div>
       </div>
       <div class="card">
-        <h3>Altas y bajas de este mes</h3>
-        <div class="rubro-row"><span>🆕 Cuentas nuevas</span><b id="altasCantidadMes">0</b></div>
-        <div class="rubro-row"><span>Representan por mes en cuotas</span><b id="altasMontoMes">$0</b></div>
-        <div class="rubro-row" style="margin-top:10px;"><span>✅ Cuentas saldadas</span><b id="saldadasCantidadMes">0</b></div>
-        <div class="rubro-row"><span>Dejan de representar por mes</span><b id="saldadasMontoMes">$0</b></div>
+        <h3>Ajustes sin categorizar este mes</h3>
+        <div class="muted" style="margin-bottom:8px;">Ventas rápidas marcadas "ajuste" y gastos cargados en el rubro "Ajuste" — cuentan como venta/gasto normal en el resto de la app, esto es solo para que veas cuánto no estás pudiendo categorizar bien</div>
+        <div id="ajustesMesBox"></div>
       </div>
       <div class="card">
-        <h3>Clientes para renovar</h3>
-        <div class="muted" style="margin-bottom:8px;">Buenos pagadores con crédito casi terminado</div>
-        <div id="renovarList"></div>
+        <h3>Costo por kilómetro</h3>
+        <div class="muted" style="margin-bottom:8px;">Se actualiza solo con lo gastado en combustible y los km recorridos entre cargas (según el kilometraje que cargás en cada gasto de Combustible)</div>
+        <div style="font-size:24px;font-weight:800;" id="costoPorKm">—</div>
+        <div class="muted" id="costoPorKmDetalle" style="margin-top:4px;font-size:12px;"></div>
+      </div>
+      <div class="card">
+        <h3>Altas y bajas de este mes</h3>
+        <div class="rubro-row" style="cursor:pointer;" onclick="abrirDetalleCaja('altas')"><span>🆕 Cuentas nuevas ›</span><b id="altasCantidadMes">0</b></div>
+        <div class="rubro-row"><span>Representan por mes en cuotas</span><b id="altasMontoMes">$0</b></div>
+        <div class="rubro-row" style="margin-top:10px;cursor:pointer;" onclick="abrirDetalleCaja('bajas')"><span>✅ Cuentas saldadas ›</span><b id="saldadasCantidadMes">0</b></div>
+        <div class="rubro-row"><span>Dejan de representar por mes</span><b id="saldadasMontoMes">$0</b></div>
       </div>
       <div class="card">
         <h3>Incobrables y descuentos</h3>
@@ -397,6 +410,14 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
           <input type="number" id="metaClientesInput" placeholder="Ej: 10">
         </div>
         <button class="btn wood block" onclick="saveMeta()">Guardar objetivo</button>
+      </div>
+      <div class="card">
+        <h3>Saldo inicial de caja</h3>
+        <div class="muted" style="margin-bottom:10px;">Cuánto tenés ahora mismo, en mano y en la cuenta. Desde el momento en que lo cargues, cada cobro, venta y gasto (con su método) va actualizando solo el saldo de Balance — no hace falta volver a tocar esto salvo que necesites corregirlo.</div>
+        <div id="saldoInicialInfo" class="muted" style="margin-bottom:10px;"></div>
+        <div class="field"><label>Efectivo ($)</label><input type="number" id="saldoInicialEfectivoInput" placeholder="Ej: 50000"></div>
+        <div class="field"><label>Transferencia ($)</label><input type="number" id="saldoInicialTransferenciaInput" placeholder="Ej: 120000"></div>
+        <button class="btn wood block" onclick="guardarSaldoInicial()">Guardar saldo inicial</button>
       </div>
       <div class="card">
         <h3>Cerrar caja del día</h3>
@@ -581,6 +602,7 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
           <option value="Empleado">Empleado</option>
           <option value="Insumos">Insumos</option>
           <option value="Combustible">Combustible</option>
+          <option value="Ajuste">Ajuste</option>
         </select>
       </div>
       <div class="field" id="gastoSubcatField" style="display:none;">
@@ -590,7 +612,11 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
         </select>
       </div>
       <div class="field"><label>Monto ($)</label><input id="gastoMonto" type="number"></div>
+      <div class="field"><label>Pagado en</label>
+        <select id="gastoMetodo"><option value="efectivo">Efectivo</option><option value="transferencia">Transferencia</option></select>
+      </div>
       <div class="field" id="gastoLitrosField" style="display:none;"><label>Litros (opcional)</label><input id="gastoLitros" type="number" placeholder="Ej: 20"></div>
+      <div class="field" id="gastoKmField" style="display:none;"><label>Últimos 4 números del kilometraje (opcional)</label><input id="gastoKm" type="number" maxlength="4" placeholder="Ej: 5230"></div>
       <div class="field"><label>Nota (opcional)</label><input id="gastoNota" placeholder="Ej: Lija y barniz"></div>
       <button class="btn wood block" onclick="guardarGasto()">Guardar gasto</button>
     </div>
@@ -679,7 +705,14 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
       <h2>Venta rápida</h2>
       <div class="helper">Para una venta de mostrador que no necesita ficha de cliente ni cuenta corriente.</div>
       <div class="field"><label>Monto ($)</label><input type="number" id="vrMonto"></div>
+      <div class="field"><label>Cobrado en</label>
+        <select id="vrMetodo"><option value="efectivo">Efectivo</option><option value="transferencia">Transferencia</option></select>
+      </div>
       <div class="field"><label>Nota (opcional)</label><input id="vrNota" placeholder="Ej: 4 sillas contado"></div>
+      <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:14px;">
+        <input type="checkbox" id="vrAjuste" style="margin-top:3px;">
+        <span>Es un ajuste (plata que apareció sin poder identificar bien de qué venta es)</span>
+      </label>
       <button class="btn wood block" onclick="guardarVentaRapida()">Guardar venta</button>
     </div>
   </div>
@@ -948,9 +981,9 @@ let state = {
   visits: [],   // {id, clientId?, hora, fecha, done, km, resultado?, tipo?, direccion?, monto?, registrado?}
   tasks: [],    // {id, texto, fecha, done}
   payments: [], // {id, clientId, monto, metodo, tipo, fecha}
-  expenses: [], // {id, rubro, monto, nota, fecha}
+  expenses: [], // {id, rubro, subcategoria, monto, metodo:'efectivo'|'transferencia', km?, nota, fecha}
   fuel: [],     // {id, litros, monto, fecha}
-  sales: [],    // {id, clientId, monto, fecha}
+  sales: [],    // {id, clientId?, monto, metodo?, ajuste?, fecha} — sin clientId es venta rápida (cobro real, cash/transferencia); con clientId es venta a crédito (deuda, no es cobro)
   metaMes: 0,
   objetivoClientesNuevos: 0,
   cierres: [],  // {id, fecha, vendido, cobrado, gastado, balance, hora}
@@ -960,6 +993,7 @@ let state = {
   comprasProveedor: [], // {id, proveedorId, producto, costo, flete, fecha}
   serviciosProveedor: [], // {id, proveedorId, descripcion, monto, fecha}
   movimientosPerdida: [], // {id, clientId, tipo:'perdida'|'descuento', monto, fecha, nota}
+  saldoInicialCaja: null, // {efectivo, transferencia, fecha} — punto de partida para el saldo de efectivo/transferencia en Balance
   nextCode: 1,
   _v: 0 // contador de versión: se usa solo para detectar guardados en conflicto entre dispositivos
 };
@@ -1066,7 +1100,7 @@ function migrarSubcategoriasGastos(){
   if(state.subcategoriasGastos) return;
   state.subcategoriasGastos = {
     Personales: (state.subcategoriasPersonales && state.subcategoriasPersonales.length) ? state.subcategoriasPersonales.slice() : ['Casa','Chicos','Almacén'],
-    Empleado: [], Insumos: [], Combustible: []
+    Empleado: [], Insumos: [], Combustible: [], Ajuste: []
   };
   saveState();
 }
@@ -1377,6 +1411,8 @@ function renderClientes(filterText, filterType){
   document.getElementById('clientesResumenCounts').innerHTML =
     `<span style="color:var(--red)">${noResueltoIds.size} sin resolver</span> · <span style="color:var(--green)">${cobranza.resueltos.length} resueltos</span>`;
 
+  renderRenovarList();
+
   if(items.length===0){
     list.innerHTML = `<div class="empty"><div class="big">👥</div>Todavía no hay clientes acá.<br>Tocá el botón + para cargar el primero.</div>`;
     return;
@@ -1421,6 +1457,12 @@ function renderClientes(filterText, filterType){
       <button class="btn ghost" style="margin-left:8px;flex:none;" onclick="event.stopPropagation(); quickAddToAgenda('${c.id}')" title="Agregar a la agenda de hoy">📅+</button>
     </div>`;
   }).join('');
+}
+function renderRenovarList(){
+  const buenosPagadores = todosLosPlanesPendientes().filter(({t})=> t.cuotas>0 && (t.cuotas-t.cuotasPagadas)<=2);
+  document.getElementById('renovarList').innerHTML = buenosPagadores.length ? buenosPagadores.map(({c,t})=>`
+    <div class="rubro-row" style="cursor:pointer;" onclick="openClientDetail('${c.id}')"><span>${c.nombre}${t.producto && (c.planesExtra||[]).length ? ' · '+t.producto : ''}</span><b>Le quedan ${t.cuotas-t.cuotasPagadas} cuotas</b></div>
+  `).join('') : `<div class="muted">Por ahora ningún cliente está cerca de terminar su plan.</div>`;
 }
 function quickAddToAgenda(clientId){
   const fecha = selectedAgendaDate || todayStr();
@@ -1913,11 +1955,14 @@ function openVentaRapida(){
 }
 function guardarVentaRapida(){
   const monto = Number(document.getElementById('vrMonto').value||0);
+  const metodo = document.getElementById('vrMetodo').value;
+  const ajuste = document.getElementById('vrAjuste').checked;
   const nota = document.getElementById('vrNota').value.trim();
   if(!monto){ toast('Ingresá un monto'); return; }
-  state.sales.push({id:uid(), monto, fecha:todayStr(), nota: nota || 'Venta rápida'});
+  state.sales.push({id:uid(), monto, metodo, ajuste, fecha:todayStr(), nota: nota || 'Venta rápida'});
   saveState(); renderCaja();
   closeOverlay('ov-venta-rapida');
+  document.getElementById('vrAjuste').checked = false;
   toast('Venta registrada');
 }
 
@@ -2671,10 +2716,11 @@ function onDragEndAgenda(){
 }
 
 /* ---------- Gastos / Combustible ---------- */
-function openExpense(){ editingGastoId = null; document.getElementById('gastoMonto').value=''; document.getElementById('gastoNota').value=''; document.getElementById('gastoLitros').value=''; actualizarCamposGasto(); openOverlay('ov-gasto'); }
+function openExpense(){ editingGastoId = null; document.getElementById('gastoMonto').value=''; document.getElementById('gastoMetodo').value='efectivo'; document.getElementById('gastoNota').value=''; document.getElementById('gastoLitros').value=''; document.getElementById('gastoKm').value=''; actualizarCamposGasto(); openOverlay('ov-gasto'); }
 function actualizarCamposGasto(){
   const rubro = document.getElementById('gastoRubro').value;
   document.getElementById('gastoLitrosField').style.display = rubro==='Combustible' ? 'block' : 'none';
+  document.getElementById('gastoKmField').style.display = rubro==='Combustible' ? 'block' : 'none';
   document.getElementById('gastoSubcatField').style.display = 'block';
   renderOpcionesSubcategoria();
 }
@@ -2712,7 +2758,9 @@ function editarGasto(id){
   document.getElementById('gastoRubro').value = g.rubro;
   actualizarCamposGasto();
   document.getElementById('gastoMonto').value = g.monto;
+  document.getElementById('gastoMetodo').value = g.metodo || 'efectivo';
   document.getElementById('gastoNota').value = g.nota || '';
+  document.getElementById('gastoKm').value = (g.km!==undefined && g.km!==null) ? g.km : '';
   if(g.subcategoria){
     document.getElementById('gastoSubcategoria').value = g.subcategoria;
   }
@@ -2721,7 +2769,10 @@ function editarGasto(id){
 function guardarGasto(){
   const rubro = document.getElementById('gastoRubro').value;
   const monto = Number(document.getElementById('gastoMonto').value||0);
+  const metodo = document.getElementById('gastoMetodo').value;
   const litros = Number(document.getElementById('gastoLitros').value||0);
+  const kmInput = document.getElementById('gastoKm').value;
+  const km = (rubro==='Combustible' && kmInput!=='') ? Number(kmInput) : null;
   let subcategoria = document.getElementById('gastoSubcategoria').value;
   if(subcategoria==='__nueva__') subcategoria = '';
   let nota = document.getElementById('gastoNota').value;
@@ -2729,11 +2780,11 @@ function guardarGasto(){
   if(rubro==='Combustible' && litros){ nota = (nota ? nota+' · ' : '') + litros+' litros'; }
   if(editingGastoId){
     const g = state.expenses.find(x=>x.id===editingGastoId);
-    if(g){ g.rubro=rubro; g.subcategoria=subcategoria; g.monto=monto; g.nota=nota; }
+    if(g){ g.rubro=rubro; g.subcategoria=subcategoria; g.monto=monto; g.metodo=metodo; g.nota=nota; g.km=km; }
     editingGastoId = null;
     toast('Gasto actualizado');
   } else {
-    state.expenses.push({id:uid(), rubro, subcategoria, monto, nota, fecha:todayStr()});
+    state.expenses.push({id:uid(), rubro, subcategoria, monto, metodo, nota, km, fecha:todayStr()});
     toast('Gasto guardado');
   }
   saveState(); closeOverlay('ov-gasto');
@@ -2743,7 +2794,7 @@ function guardarGasto(){
 }
 
 /* ---------- Caja ---------- */
-const RUBRO_COLORS = {Personales:'#A63A2E', Empleado:'#3D5A73', Insumos:'#A9642F', Combustible:'#4B6B4E'};
+const RUBRO_COLORS = {Personales:'#A63A2E', Empleado:'#3D5A73', Insumos:'#A9642F', Combustible:'#4B6B4E', Ajuste:'#5C4A72'};
 function calcularVendido(desde, hasta){
   return state.sales.filter(s=> s.clientId && s.fecha>=desde && s.fecha<=hasta && (state.clients.find(c=>c.id===s.clientId)||{}).type==='muebles')
     .map(s=>({fecha:s.fecha, nombre:(state.clients.find(c=>c.id===s.clientId)||{}).nombre||'Cliente', monto:s.monto}));
@@ -2759,12 +2810,28 @@ function calcularGastos(desde, hasta){
   return state.expenses.filter(e=>e.fecha>=desde && e.fecha<=hasta)
     .map(e=>({id:e.id, fecha:e.fecha, nombre:e.rubro+(e.subcategoria?' · '+e.subcategoria:'')+(e.nota?' ('+e.nota+')':''), monto:e.monto}));
 }
+function calcularAltas(desde, hasta){
+  return state.clients.filter(c=> c.type==='muebles' && c.fechaCreacion && c.fechaCreacion>=desde && c.fechaCreacion<=hasta)
+    .map(c=>({clientId:c.id, fecha:c.fechaCreacion, nombre:c.nombre, monto:c.montoCuota||0}));
+}
+function calcularBajas(desde, hasta){
+  const out = [];
+  state.clients.filter(c=>c.type==='muebles').forEach(c=>{
+    planesDelCliente(c).forEach(t=>{
+      if(t.fechaSaldado && t.fechaSaldado>=desde && t.fechaSaldado<=hasta){
+        out.push({clientId:c.id, fecha:t.fechaSaldado, nombre:c.nombre+(t.producto && (c.planesExtra||[]).length ? ' · '+t.producto : ''), monto:t.montoCuota||0});
+      }
+    });
+  });
+  return out;
+}
 let detalleCajaTipo = null;
 function abrirDetalleCaja(tipo){
   detalleCajaTipo = tipo;
-  document.getElementById('detalleCajaDesde').value = todayStr();
+  const esMensual = tipo==='altas' || tipo==='bajas';
+  document.getElementById('detalleCajaDesde').value = esMensual ? todayStr().slice(0,7)+'-01' : todayStr();
   document.getElementById('detalleCajaHasta').value = todayStr();
-  const titulos = {vendido:'Detalle de vendido (muebles a crédito)', cobrado:'Detalle de cobrado', gastos:'Detalle de gastos'};
+  const titulos = {vendido:'Detalle de vendido (muebles a crédito)', cobrado:'Detalle de cobrado', gastos:'Detalle de gastos', altas:'Cuentas nuevas', bajas:'Cuentas saldadas'};
   document.getElementById('detalleCajaTitulo').textContent = titulos[tipo];
   renderDetalleCaja();
   openOverlay('ov-detalle-caja');
@@ -2776,14 +2843,17 @@ function renderDetalleCaja(){
   if(detalleCajaTipo==='vendido') items = calcularVendido(desde,hasta);
   if(detalleCajaTipo==='cobrado') items = calcularCobrado(desde,hasta);
   if(detalleCajaTipo==='gastos') items = calcularGastos(desde,hasta);
+  if(detalleCajaTipo==='altas') items = calcularAltas(desde,hasta);
+  if(detalleCajaTipo==='bajas') items = calcularBajas(desde,hasta);
   items.sort((a,b)=> b.fecha.localeCompare(a.fecha));
-  const total = items.reduce((s,x)=>s+x.monto,0);
-  document.getElementById('detalleCajaTotal').textContent = fmtMoney(total);
+  const esClientes = detalleCajaTipo==='altas' || detalleCajaTipo==='bajas';
+  document.getElementById('detalleCajaTotal').textContent = esClientes ? items.length+' cliente(s)' : fmtMoney(items.reduce((s,x)=>s+x.monto,0));
   document.getElementById('detalleCajaLista').innerHTML = items.length ? items.map(it=>{
     const acciones = detalleCajaTipo==='gastos' ? `
       <button class="btn ghost" style="padding:4px 8px;font-size:11px;margin-left:6px;" onclick="editarGasto('${it.id}')">✏️</button>
       <button class="btn ghost" style="padding:4px 8px;font-size:11px;margin-left:4px;" onclick="borrarGastoDesdeDetalle('${it.id}')">🗑️</button>` : '';
-    return `<div class="rubro-row"><span>${it.fecha} · ${it.nombre}</span><span style="display:flex;align-items:center;"><b>${fmtMoney(it.monto)}</b>${acciones}</span></div>`;
+    const click = esClientes ? ` style="cursor:pointer;" onclick="closeOverlay('ov-detalle-caja'); openClientDetail('${it.clientId}')"` : '';
+    return `<div class="rubro-row"${click}><span>${it.fecha} · ${it.nombre}</span><span style="display:flex;align-items:center;"><b>${fmtMoney(it.monto)}</b>${acciones}</span></div>`;
   }).join('') : `<div class="muted">Sin movimientos en ese rango.</div>`;
 }
 function borrarGastoDesdeDetalle(id){
@@ -2818,14 +2888,6 @@ function renderCaja(){
   `).join('') : `<div class="muted">Sin gastos cargados hoy.</div>`;
 
   const mesActual = t.slice(0,7);
-  const vendidoMes = state.payments.filter(p=>p.fecha.startsWith(mesActual)).reduce((s,p)=>s+p.monto,0)
-    + state.sales.filter(s=>s.fecha.startsWith(mesActual)).reduce((s,x)=>s+x.monto,0);
-  const pct = state.metaMes ? Math.min(100, Math.round(vendidoMes/state.metaMes*100)) : 0;
-  document.getElementById('metaMes').innerHTML = state.metaMes ? `
-    <div class="muted" style="margin-bottom:6px;">${fmtMoney(vendidoMes)} de ${fmtMoney(state.metaMes)} (${pct}%)</div>
-    <div style="background:rgba(255,255,255,0.08);border-radius:8px;height:10px;overflow:hidden;">
-      <div style="width:${pct}%;background:var(--wood);height:100%;"></div>
-    </div>` : `<div class="muted">Todavía no cargaste un objetivo mensual. Andá a "Más" para definirlo.</div>`;
 
   // Cumplimiento del mes: clientes nuevos + cobrado vs pactado
   const clientesNuevosMes = state.clients.filter(c=> c.fechaCreacion && c.fechaCreacion.startsWith(mesActual)).length;
@@ -2918,13 +2980,6 @@ function todosLosPlanesPendientes(){
   });
   return out;
 }
-let cobranzaMesFiltro = 'pendientes';
-function filterCobranzaMes(el, k){
-  cobranzaMesFiltro = k;
-  document.querySelectorAll('#cobranzaMesFilters .chip').forEach(c=>c.classList.remove('on'));
-  el.classList.add('on');
-  renderCobranzaMes();
-}
 /* Un solo cálculo de "quién falta resolver este mes / quién ya quedó resuelto", usado tanto
    por Balance (Cobranza de este mes) como por la lista de Clientes, para que los dos lugares
    digan siempre lo mismo y no haya que entrar a Balance a chequear el estado de cada cliente. */
@@ -2959,41 +3014,26 @@ function calcularCobranzaMes(){
   const pendientesIds = new Set(pendientes.map(({c})=>c.id));
   return {mesActual, pendientes, resueltos, pendientesIds};
 }
-function renderCobranzaMes(){
-  const {pendientes, resueltos} = calcularCobranzaMes();
-
-  document.querySelector('#cobranzaMesFilters .chip[data-k="pendientes"]').textContent = `🕒 Faltan (${pendientes.length})`;
-  document.querySelector('#cobranzaMesFilters .chip[data-k="resueltos"]').textContent = `✅ Resueltos (${resueltos.length})`;
-
-  const list = document.getElementById('cobranzaMesList');
-  if(cobranzaMesFiltro==='pendientes'){
-    list.innerHTML = pendientes.length ? pendientes.map(({c,t})=>{
-      const dias = diasHasta(t.fechaPago);
-      const diasTexto = dias===0 ? 'vence hoy' : (dias>0 ? `vence en ${dias} día(s)` : `vencido hace ${Math.abs(dias)} día(s)`);
-      const prod = t.producto && (c.planesExtra||[]).length ? ' · '+t.producto : '';
-      const cuotaFalta = Math.max(0, Math.round(((t.montoCuota||0) - (t.acumuladoParcial||0))*100)/100);
-      return `<div class="rubro-row" style="cursor:pointer;" onclick="closeOverlay('ov-detail'); openClientDetail('${c.id}')"><span>${c.nombre}${prod}<br><span class="muted" style="font-size:11px;">${diasTexto}</span></span><b>${fmtMoney(cuotaFalta)}</b></div>`;
-    }).join('') : `<div class="muted">Ya resolviste a todos los que vencían este mes 🎉</div>`;
-  } else {
-    list.innerHTML = resueltos.length ? resueltos.map(info=>{
-      const c = state.clients.find(x=>x.id===info.clientId);
-      if(!c) return '';
-      const t = planTarget(c, info.planId||null);
-      const prod = t.producto && (c.planesExtra||[]).length ? ' · '+t.producto : '';
-      const partes = [];
-      if(info.pagado) partes.push('Pagó '+fmtMoney(info.pagado));
-      if(info.perdida) partes.push('Dado de baja (pérdida)');
-      if(info.pospuestoA) partes.push('Pospuesto a '+info.pospuestoA);
-      return `<div class="rubro-row" style="cursor:pointer;" onclick="closeOverlay('ov-detail'); openClientDetail('${c.id}')"><span>${c.nombre}${prod}<br><span class="muted" style="font-size:11px;">${partes.join(' · ')}</span></span><b style="color:var(--green)">✓</b></div>`;
-    }).join('') : `<div class="muted">Todavía nadie quedó resuelto este mes.</div>`;
-  }
-}
 function renderBalance(){
   const pendientesPlanes = todosLosPlanesPendientes();
   const clientesConDeudaCount = new Set(pendientesPlanes.map(x=>x.c.id)).size;
 
   const balanceTotal = pendientesPlanes.reduce((s,x)=> s + x.restante, 0);
   document.getElementById('scoreBalanceTotal').textContent = fmtMoney(balanceTotal) + ` · ${clientesConDeudaCount} clientes`;
+
+  renderEstadoGeneral(balanceTotal);
+  renderAjustesMes();
+
+  // Objetivo del mes: cuánto se lleva vendido contra la meta cargada en Más.
+  const mesActualMeta = todayStr().slice(0,7);
+  const vendidoMesMeta = state.payments.filter(p=>p.fecha.startsWith(mesActualMeta)).reduce((s,p)=>s+p.monto,0)
+    + state.sales.filter(s=>s.fecha.startsWith(mesActualMeta)).reduce((s,x)=>s+x.monto,0);
+  const pctMeta = state.metaMes ? Math.min(100, Math.round(vendidoMesMeta/state.metaMes*100)) : 0;
+  document.getElementById('metaMes').innerHTML = state.metaMes ? `
+    <div class="muted" style="margin-bottom:6px;">${fmtMoney(vendidoMesMeta)} de ${fmtMoney(state.metaMes)} (${pctMeta}%)</div>
+    <div style="background:rgba(255,255,255,0.08);border-radius:8px;height:10px;overflow:hidden;">
+      <div style="width:${pctMeta}%;background:var(--wood);height:100%;"></div>
+    </div>` : `<div class="muted">Todavía no cargaste un objetivo mensual. Andá a "Más" para definirlo.</div>`;
 
   const totals = {verde:0, amarillo:0, naranja:0, rojo:0};
   const counts = {verde:0, amarillo:0, naranja:0, rojo:0};
@@ -3038,15 +3078,20 @@ function renderBalance(){
   const rows = meses.map(m=>{
     const cobrado = state.payments.filter(p=>p.fecha.startsWith(m)).reduce((s,p)=>s+p.monto,0);
     const vendido = cobrado + state.sales.filter(s=>s.fecha.startsWith(m)).reduce((s,x)=>s+x.monto,0);
+    const gastado = state.expenses.filter(e=>e.fecha.startsWith(m)).reduce((s,e)=>s+e.monto,0);
     const label = new Date(m+'-02').toLocaleDateString('es-AR',{month:'short', year:'numeric'});
     const pctBar = Math.round(vendido/maxVendido*100);
     return `<div style="margin-bottom:10px;">
-      <div class="rubro-row" style="border-bottom:none;padding-bottom:2px;"><span>${label}</span><span style="text-align:right;"><b>vendido ${fmtMoney(vendido)}</b><br><span class="muted">cobrado ${fmtMoney(cobrado)}</span></span></div>
+      <div class="rubro-row" style="border-bottom:none;padding-bottom:2px;"><span>${label}</span><span style="text-align:right;"><b>vendido ${fmtMoney(vendido)}</b><br><span class="muted">cobrado ${fmtMoney(cobrado)} · gastado ${fmtMoney(gastado)}</span></span></div>
       <div style="background:rgba(255,255,255,0.06);border-radius:6px;height:8px;overflow:hidden;"><div style="width:${pctBar}%;background:var(--wood);height:100%;"></div></div>
     </div>`;
   });
   document.getElementById('scoreMeses').innerHTML = rows.join('');
 
+  // Gastos por rubro de este mes: incluye Personales/Empleado/Insumos/Combustible más lo
+  // condonado en incobrables y descuentos, como un rubro más (no es plata que salió de la
+  // caja, pero sí es un costo real del negocio este mes). Solo afecta esta vista de análisis,
+  // no el balance de Caja del día a día.
   const mesActualBal = todayStr().slice(0,7);
   const gastosMes = state.expenses.filter(e=>e.fecha.startsWith(mesActualBal));
   const porRubro = {};
@@ -3054,10 +3099,17 @@ function renderBalance(){
     const clave = e.rubro==='Personales' && e.subcategoria ? `Personales · ${e.subcategoria}` : e.rubro;
     porRubro[clave] = (porRubro[clave]||0) + e.monto;
   });
+  const perdidasMesRubro = (state.movimientosPerdida||[]).filter(m=>m.fecha.startsWith(mesActualBal)).reduce((s,m)=>s+m.monto,0);
+  if(perdidasMesRubro>0) porRubro['Incobrables/Descuentos'] = perdidasMesRubro;
+  const COLOR_INCOBRABLES = '#7A3B69';
+  const colorDeRubro = (k)=> k==='Incobrables/Descuentos' ? COLOR_INCOBRABLES : (RUBRO_COLORS[k.split(' · ')[0]] || '#999');
   const clavesRubro = Object.keys(porRubro);
+  const totalGastosMes = clavesRubro.reduce((s,k)=>s+porRubro[k],0);
+  document.getElementById('gastosPorRubroBarra').innerHTML = totalGastosMes>0 ? clavesRubro
+    .map(k=>`<div style="width:${(porRubro[k]/totalGastosMes*100).toFixed(1)}%;background:${colorDeRubro(k)};"></div>`).join('')
+    : '';
   document.getElementById('gastosPorRubroMes').innerHTML = clavesRubro.length ? clavesRubro.map(k=>{
-    const colorBase = RUBRO_COLORS[k.split(' · ')[0]] || '#999';
-    return `<div class="rubro-row"><span><span class="dot" style="background:${colorBase}"></span>${k}</span><b>${fmtMoney(porRubro[k])}</b></div>`;
+    return `<div class="rubro-row"><span><span class="dot" style="background:${colorDeRubro(k)}"></span>${k}</span><b>${fmtMoney(porRubro[k])}</b></div>`;
   }).join('') : `<div class="muted">Sin gastos cargados este mes.</div>`;
 
   // Altas: clientes-muebles cargados este mes (plan principal). Bajas: planes (principal o extra)
@@ -3077,10 +3129,7 @@ function renderBalance(){
   document.getElementById('saldadasCantidadMes').textContent = saldadasMes.length;
   document.getElementById('saldadasMontoMes').textContent = fmtMoney(montoSaldadasMes);
 
-  const buenosPagadores = pendientesPlanes.filter(({t})=> t.cuotas>0 && (t.cuotas-t.cuotasPagadas)<=2);
-  document.getElementById('renovarList').innerHTML = buenosPagadores.length ? buenosPagadores.map(({c,t})=>`
-    <div class="rubro-row"><span>${c.nombre}${t.producto && (c.planesExtra||[]).length ? ' · '+t.producto : ''}</span><b>Le quedan ${t.cuotas-t.cuotasPagadas} cuotas</b></div>
-  `).join('') : `<div class="muted">Por ahora ningún cliente está cerca de terminar su plan.</div>`;
+  renderCostoPorKm();
 
   // Incobrables (pérdidas) y descuentos
   const mesActualPerdidas = todayStr().slice(0,7);
@@ -3096,19 +3145,136 @@ function renderBalance(){
     const etiqueta = m.tipo==='perdida' ? '❌ Pérdida' : '🏷️ Descuento';
     return `<div class="rubro-row"><span>${etiqueta} · ${cli?cli.nombre:'—'}<br><span class="muted" style="font-size:11px;">${m.fecha}${m.nota?' · '+m.nota:''}</span></span><b>${fmtMoney(m.monto)}</b></div>`;
   }).join('') : `<div class="muted">Todavía no diste de baja ni aplicaste descuentos a ningún cliente.</div>`;
-
-  renderCobranzaMes();
+}
+// Saldo de efectivo y transferencia: arranca del saldo inicial cargado en "Más" y desde esa
+// fecha en adelante suma cobros y ventas rápidas (según su método) y resta gastos (según el
+// suyo). No mira nada anterior a la fecha del saldo inicial, porque los cobros/gastos viejos
+// no siempre tenían el método cargado. Devuelve {efectivo, transferencia} para reusar en el
+// estado general, o null si todavía no se cargó un saldo inicial.
+function renderSaldoCaja(){
+  const box = document.getElementById('saldoCajaBox');
+  const si = state.saldoInicialCaja;
+  if(!si){
+    box.innerHTML = `<div class="muted">Todavía no cargaste un saldo inicial. Andá a "Más" para cargarlo y que esto se calcule solo.</div>`;
+    return null;
+  }
+  let efectivo = si.efectivo||0, transferencia = si.transferencia||0;
+  const sumar = (monto, metodo)=>{ if(metodo==='transferencia') transferencia += monto; else efectivo += monto; };
+  state.payments.filter(p=>p.fecha>=si.fecha).forEach(p=> sumar(p.monto, p.metodo||'efectivo'));
+  state.sales.filter(s=> !s.clientId && s.fecha>=si.fecha).forEach(s=> sumar(s.monto, s.metodo||'efectivo'));
+  state.expenses.filter(e=>e.fecha>=si.fecha).forEach(e=> sumar(-e.monto, e.metodo||'efectivo'));
+  box.innerHTML = `
+    <div class="rubro-row"><span>💵 Efectivo</span><b>${fmtMoney(efectivo)}</b></div>
+    <div class="rubro-row"><span>🏦 Transferencia</span><b>${fmtMoney(transferencia)}</b></div>
+    <div class="rubro-row" style="border-top:1px solid var(--line);margin-top:4px;padding-top:8px;"><span>Total</span><b>${fmtMoney(efectivo+transferencia)}</b></div>
+    <div class="muted" style="margin-top:6px;font-size:11px;">Desde el saldo inicial cargado el ${si.fecha}</div>
+  `;
+  return {efectivo, transferencia};
+}
+// Lo que se debe a proveedores este mes (se compensa mensualmente, como ya funciona la cuenta
+// corriente de cada proveedor en "Más"): suma solo los saldos a favor del proveedor (lo que
+// falta pagarles), no lo que ellos te deben a vos.
+function calcularPasivoProveedores(){
+  const mesActual = todayStr().slice(0,7);
+  let total = 0;
+  state.proveedores.forEach(p=>{
+    const compras = state.comprasProveedor.filter(c=>c.proveedorId===p.id && c.fecha.startsWith(mesActual));
+    const servicios = state.serviciosProveedor.filter(s=>s.proveedorId===p.id && s.fecha.startsWith(mesActual));
+    const totalCompras = compras.reduce((s,c)=>s+c.costo+(c.flete||0),0);
+    const totalServicios = servicios.reduce((s,x)=>s+x.monto,0);
+    const diferencia = totalCompras - totalServicios;
+    if(diferencia>0) total += diferencia;
+  });
+  return total;
+}
+// Foto general del negocio, como activos contra pasivos de cualquier balance: lo que tenés en
+// mano/cuenta más lo que te deben los clientes (activos), contra lo que le debés a proveedores
+// (pasivos). La diferencia es el patrimonio neto de ese momento.
+function renderEstadoGeneral(balanceTotal){
+  const saldo = renderSaldoCaja();
+  const cajaTotal = saldo ? (saldo.efectivo + saldo.transferencia) : 0;
+  const pasivoProveedores = calcularPasivoProveedores();
+  const activos = cajaTotal + balanceTotal;
+  const patrimonio = activos - pasivoProveedores;
+  document.getElementById('estadoGeneralBox').innerHTML = `
+    <div class="rubro-row"><span>Efectivo + transferencia</span><b>${fmtMoney(cajaTotal)}</b></div>
+    <div class="rubro-row"><span>Por cobrar a clientes</span><b>${fmtMoney(balanceTotal)}</b></div>
+    <div class="rubro-row" style="border-top:1px solid var(--line);padding-top:6px;"><span>Total activos</span><b>${fmtMoney(activos)}</b></div>
+    <div class="rubro-row" style="margin-top:8px;"><span>Por pagar a proveedores</span><b style="color:var(--red)">${fmtMoney(pasivoProveedores)}</b></div>
+    <div class="rubro-row" style="border-top:1px solid var(--line);padding-top:6px;margin-top:4px;"><span><b>Patrimonio (activos − pasivos)</b></span><b style="font-size:18px;">${fmtMoney(patrimonio)}</b></div>
+    ${saldo ? '' : `<div class="muted" style="margin-top:8px;font-size:11px;">El efectivo/transferencia no está sumando todavía — cargá el saldo inicial en "Más".</div>`}
+  `;
+}
+// Cuánto se cargó este mes como "ajuste" (ventas rápidas tildadas ajuste, gastos en el rubro
+// Ajuste) — ya cuenta como venta/gasto normal en el resto de la app; esto es solo para ver de
+// un vistazo cuánto no se está pudiendo categorizar bien.
+function renderAjustesMes(){
+  const mesActual = todayStr().slice(0,7);
+  const ventasAjuste = state.sales.filter(s=>s.ajuste && s.fecha.startsWith(mesActual));
+  const gastosAjuste = state.expenses.filter(e=>e.rubro==='Ajuste' && e.fecha.startsWith(mesActual));
+  const totalVentas = ventasAjuste.reduce((s,x)=>s+x.monto,0);
+  const totalGastos = gastosAjuste.reduce((s,x)=>s+x.monto,0);
+  document.getElementById('ajustesMesBox').innerHTML = (ventasAjuste.length || gastosAjuste.length) ? `
+    <div class="rubro-row"><span>Ingresos sin categorizar</span><b>${fmtMoney(totalVentas)} · ${ventasAjuste.length}</b></div>
+    <div class="rubro-row"><span>Gastos sin categorizar</span><b>${fmtMoney(totalGastos)} · ${gastosAjuste.length}</b></div>
+  ` : `<div class="muted">Ningún ajuste cargado este mes 👍</div>`;
+}
+// Recorre las cargas de Combustible que tengan kilometraje cargado, ordenadas por km, y calcula
+// cuánto se gastó por cada km recorrido entre una carga y la siguiente. Si el kilometraje da la
+// vuelta (pasa de 9999 a 0000 porque solo se cargan los últimos 4 dígitos), se asume que dio una
+// sola vuelta completa. Se actualiza solo, cada vez que se carga un gasto de Combustible con km.
+function renderCostoPorKm(){
+  const cargas = state.expenses
+    .filter(e=>e.rubro==='Combustible' && e.km!==undefined && e.km!==null && e.km!=='')
+    .map(e=>({fecha:e.fecha, monto:e.monto, km:Number(e.km)}))
+    .sort((a,b)=> a.fecha===b.fecha ? 0 : a.fecha.localeCompare(b.fecha));
+  if(cargas.length<2){
+    document.getElementById('costoPorKm').textContent = '—';
+    document.getElementById('costoPorKmDetalle').textContent = 'Cargá el kilometraje en al menos 2 cargas de combustible para que se calcule solo.';
+    return;
+  }
+  let kmTotales = 0, gastoTotal = 0;
+  for(let i=1;i<cargas.length;i++){
+    let delta = cargas[i].km - cargas[i-1].km;
+    if(delta<0) delta += 10000; // dio la vuelta en los últimos 4 dígitos
+    kmTotales += delta;
+    gastoTotal += cargas[i].monto;
+  }
+  if(kmTotales<=0){
+    document.getElementById('costoPorKm').textContent = '—';
+    document.getElementById('costoPorKmDetalle').textContent = 'Todavía no hay suficiente diferencia de kilometraje entre cargas.';
+    return;
+  }
+  document.getElementById('costoPorKm').textContent = fmtMoney(gastoTotal/kmTotales) + ' / km';
+  document.getElementById('costoPorKmDetalle').textContent = `Con las últimas ${cargas.length} cargas de combustible con kilometraje cargado · ${kmTotales} km recorridos · ${fmtMoney(gastoTotal)} gastados en ese tramo.`;
 }
 function renderMas(){
   document.getElementById('metaInput').value = state.metaMes || '';
   document.getElementById('metaClientesInput').value = state.objetivoClientesNuevos || '';
   document.getElementById('cantidadCierres').textContent = state.cierres.length;
+  const si = state.saldoInicialCaja;
+  document.getElementById('saldoInicialInfo').textContent = si
+    ? `Cargado el ${si.fecha}: ${fmtMoney(si.efectivo)} en efectivo, ${fmtMoney(si.transferencia)} en transferencia.`
+    : 'Todavía no cargaste un saldo inicial — el saldo de Balance no se va a mostrar hasta que cargues uno.';
+  document.getElementById('saldoInicialEfectivoInput').value = si ? si.efectivo : '';
+  document.getElementById('saldoInicialTransferenciaInput').value = si ? si.transferencia : '';
   renderProveedores();
 }
 function saveMeta(){
   state.metaMes = Number(document.getElementById('metaInput').value||0);
   state.objetivoClientesNuevos = Number(document.getElementById('metaClientesInput').value||0);
-  saveState(); renderCaja(); renderMas(); toast('Objetivo guardado');
+  saveState(); renderBalance(); renderMas(); toast('Objetivo guardado');
+}
+// Punto de partida del saldo de efectivo/transferencia que se ve en Balance. A partir de la
+// fecha en que se carga, cada cobro, venta rápida y gasto (según su método) va sumando o
+// restando solo — no hace falta reconstruir el historial viejo, que no tenía método cargado.
+// Volver a guardar esto (por ejemplo, para corregirlo) resetea el punto de partida a hoy.
+function guardarSaldoInicial(){
+  const efectivo = Number(document.getElementById('saldoInicialEfectivoInput').value||0);
+  const transferencia = Number(document.getElementById('saldoInicialTransferenciaInput').value||0);
+  state.saldoInicialCaja = {efectivo, transferencia, fecha: todayStr()};
+  saveState(); renderMas(); renderBalance();
+  toast('Saldo inicial guardado');
 }
 
 /* ---------- Proveedores (cuenta corriente) ---------- */
