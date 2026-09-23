@@ -295,7 +295,10 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
       <input class="search" placeholder="Buscar por nombre o código…" oninput="renderClientes(this.value)">
       <div class="filters" id="clientFilters"></div>
       <div class="filters" id="clientColorFilters" style="margin-top:-4px;"></div>
-      <button class="btn ghost" id="toggleSaldadosBtn" style="margin-bottom:10px;" onclick="toggleSaldados()">👁️ Mostrar saldados</button>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+        <button class="btn ghost" id="toggleSaldadosBtn" style="margin-bottom:0;" onclick="toggleSaldados()">👁️ Mostrar saldados</button>
+        <span id="clientesResumenCounts" style="font-size:12.5px;font-weight:700;"></span>
+      </div>
       <div id="clientList"></div>
     </section>
 
@@ -398,11 +401,6 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
       <div class="card">
         <h3>Cerrar caja del día</h3>
         <div class="muted" style="margin-bottom:10px;">Si no la cerrás vos, se cierra sola apenas abrís la app al día siguiente, con los datos tal cual quedaron. Historial de cierres guardados: <b id="cantidadCierres">0</b></div>
-      </div>
-      <div class="card">
-        <h3>Gastos</h3>
-        <div class="muted" style="margin-bottom:10px;">Cargá un gasto (Personales, Empleado, Insumos o Combustible) sin tener que ir a Caja.</div>
-        <button class="btn wood block" onclick="openExpense()">+ Cargar gasto</button>
       </div>
       <div class="card">
         <h3>Copia de seguridad</h3>
@@ -649,7 +647,8 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
       <button class="btn ghost block" style="margin-bottom:10px;" onclick="closeOverlay('ov-agenda-menu'); openFleteRapido();">🚚 Flete</button>
       <button class="btn ghost block" style="margin-bottom:10px;" onclick="closeOverlay('ov-agenda-menu'); openAddTask();">📝 Tarea</button>
       <button class="btn ghost block" style="margin-bottom:10px;" onclick="closeOverlay('ov-agenda-menu'); openPresupuestoRapido();">🖌️ Presupuesto de pintura</button>
-      <button class="btn ghost block" onclick="closeOverlay('ov-agenda-menu'); openVentaRapida();">💵 Venta rápida</button>
+      <button class="btn ghost block" style="margin-bottom:10px;" onclick="closeOverlay('ov-agenda-menu'); openVentaRapida();">💵 Venta rápida</button>
+      <button class="btn ghost block" onclick="closeOverlay('ov-agenda-menu'); openExpense();">💸 Gasto</button>
     </div>
   </div>
 </div>
@@ -778,11 +777,19 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
         <div class="rubro-row"><span>Pago acordado</span><b id="reprogMontoActual">—</b></div>
       </div>
 
-      <div class="type-toggle" id="reprogModoToggle" style="flex-wrap:wrap;">
-        <button class="on" data-m="reagendar" onclick="setModoReprog('reagendar')">No pagó / reagendar</button>
-        <button data-m="mover" onclick="setModoReprog('mover')">Mover agenda</button>
-        <button data-m="esquema" onclick="setModoReprog('esquema')">Esquema de pago</button>
-      </div>
+      <div class="helper" style="margin-top:0;">¿Qué querés hacer?</div>
+      <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:8px;">
+        <input type="radio" name="reprogModo" value="reagendar" checked style="margin-top:3px;" onchange="setModoReprog('reagendar')">
+        <span>No pagó / reagendar — cambia la fecha de cobro y decide qué pasa con la cuota que no se pagó</span>
+      </label>
+      <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:8px;">
+        <input type="radio" name="reprogModo" value="mover" style="margin-top:3px;" onchange="setModoReprog('mover')">
+        <span>Mover agenda — mueve los próximos pagos a partir de una fecha, sin tocar la deuda</span>
+      </label>
+      <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:14px;">
+        <input type="radio" name="reprogModo" value="esquema" style="margin-top:3px;" onchange="setModoReprog('esquema')">
+        <span>Esquema de pago — redefine monto, fecha y frecuencia de las cuotas que quedan</span>
+      </label>
 
       <div id="modoReagendar">
         <div class="field"><label>Nueva fecha de cobro</label><input type="date" id="reprogFecha" onchange="actualizarVisibilidadOpcionesReagendar()"></div>
@@ -1361,17 +1368,20 @@ function renderClientes(filterText, filterType){
     return matchText && matchType && matchSaldado && matchColor;
   });
 
+  // "No resueltos" primero: mismo criterio que "Faltan" en Cobranza de este mes (Balance),
+  // para no tener que entrar a Balance a ver quién sigue pendiente de cobrar este mes.
+  // Los demás (al día, resueltos este mes, o sin nada que vencer todavía) quedan al final.
+  // Los contadores son globales (no dependen de los filtros de arriba), como un resumen fijo.
+  const cobranza = calcularCobranzaMes();
+  const noResueltoIds = cobranza.pendientesIds;
+  document.getElementById('clientesResumenCounts').innerHTML =
+    `<span style="color:var(--red)">${noResueltoIds.size} sin resolver</span> · <span style="color:var(--green)">${cobranza.resueltos.length} resueltos</span>`;
+
   if(items.length===0){
     list.innerHTML = `<div class="empty"><div class="big">👥</div>Todavía no hay clientes acá.<br>Tocá el botón + para cargar el primero.</div>`;
     return;
   }
 
-  // "No resueltos" primero: mismo criterio que "Faltan" en Cobranza de este mes (Balance),
-  // para no tener que entrar a Balance a ver quién sigue pendiente de cobrar este mes.
-  // Los demás (al día, resueltos este mes, o sin nada que vencer todavía) quedan al final.
-  const mesActualCli = todayStr().slice(0,7);
-  const noResueltoIds = new Set();
-  todosLosPlanesPendientes().forEach(({c:cc,t})=>{ if((t.fechaPago||'').startsWith(mesActualCli)) noResueltoIds.add(cc.id); });
   items = items.map((c,i)=>({c, i})).sort((a,b)=>{
     const an = a.c.type==='muebles' && noResueltoIds.has(a.c.id) ? 0 : 1;
     const bn = b.c.type==='muebles' && noResueltoIds.has(b.c.id) ? 0 : 1;
@@ -2247,7 +2257,8 @@ function actualizarVisibilidadOpcionesReagendar(){
 }
 function setModoReprog(m){
   modoReprog = m;
-  document.querySelectorAll('#reprogModoToggle button').forEach(b=>b.classList.toggle('on', b.dataset.m===m));
+  const radio = document.querySelector('input[name="reprogModo"][value="'+m+'"]');
+  if(radio) radio.checked = true;
   document.getElementById('modoReagendar').style.display = m==='reagendar' ? 'block':'none';
   document.getElementById('modoMover').style.display = m==='mover' ? 'block':'none';
   document.getElementById('modoEsquema').style.display = m==='esquema' ? 'block':'none';
@@ -2914,7 +2925,10 @@ function filterCobranzaMes(el, k){
   el.classList.add('on');
   renderCobranzaMes();
 }
-function renderCobranzaMes(){
+/* Un solo cálculo de "quién falta resolver este mes / quién ya quedó resuelto", usado tanto
+   por Balance (Cobranza de este mes) como por la lista de Clientes, para que los dos lugares
+   digan siempre lo mismo y no haya que entrar a Balance a chequear el estado de cada cliente. */
+function calcularCobranzaMes(){
   const mesActual = todayStr().slice(0,7);
 
   // Faltan: planes cuya cuota vigente vence dentro de este mes y todavía tienen saldo.
@@ -2942,6 +2956,11 @@ function renderCobranzaMes(){
     marcar(r.clientId, r.planId, 'pospuestoA', r.fechaNueva);
   });
   const resueltos = Object.values(resueltosMap);
+  const pendientesIds = new Set(pendientes.map(({c})=>c.id));
+  return {mesActual, pendientes, resueltos, pendientesIds};
+}
+function renderCobranzaMes(){
+  const {pendientes, resueltos} = calcularCobranzaMes();
 
   document.querySelector('#cobranzaMesFilters .chip[data-k="pendientes"]').textContent = `🕒 Faltan (${pendientes.length})`;
   document.querySelector('#cobranzaMesFilters .chip[data-k="resueltos"]').textContent = `✅ Resueltos (${resueltos.length})`;
