@@ -810,20 +810,6 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
         <div class="rubro-row"><span>Pago acordado</span><b id="reprogMontoActual">—</b></div>
       </div>
 
-      <div class="helper" style="margin-top:0;">¿Qué querés hacer?</div>
-      <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:8px;">
-        <input type="radio" name="reprogModo" value="reagendar" checked style="margin-top:3px;" onchange="setModoReprog('reagendar')">
-        <span>No pagó / reagendar — cambia la fecha de cobro y decide qué pasa con la cuota que no se pagó</span>
-      </label>
-      <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:8px;">
-        <input type="radio" name="reprogModo" value="mover" style="margin-top:3px;" onchange="setModoReprog('mover')">
-        <span>Mover agenda — mueve los próximos pagos a partir de una fecha, sin tocar la deuda</span>
-      </label>
-      <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:14px;">
-        <input type="radio" name="reprogModo" value="esquema" style="margin-top:3px;" onchange="setModoReprog('esquema')">
-        <span>Esquema de pago — redefine monto, fecha y frecuencia de las cuotas que quedan</span>
-      </label>
-
       <div id="modoReagendar">
         <div class="field"><label>Nueva fecha de cobro</label><input type="date" id="reprogFecha" onchange="actualizarVisibilidadOpcionesReagendar()"></div>
         <div id="reprogOpcionesDeuda">
@@ -843,21 +829,6 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
         </div>
       </div>
 
-      <div id="modoMover" style="display:none;">
-        <div class="helper">Mueve los próximos pagos del cliente a partir de la fecha seleccionada.</div>
-        <div class="field"><label>Inicia el</label><input type="date" id="moverFecha"></div>
-      </div>
-
-      <div id="modoEsquema" style="display:none;">
-        <div class="helper">Redefine el esquema de pagos del cliente.</div>
-        <div class="field"><label>Pago acordado ($)</label><input type="number" id="esqMonto"></div>
-        <div class="field"><label>Próxima fecha de pago</label><input type="date" id="esqFecha"></div>
-        <div class="field"><label>Esquema</label>
-          <select id="esqFrecuencia"><option value="mensual">Mensual</option><option value="semanal">Semanal</option></select>
-        </div>
-        <div class="muted" id="esqResumen" style="background:#fff;color:#20232A;border-radius:10px;padding:10px;margin-bottom:6px;"></div>
-      </div>
-
       <div class="card" style="background:var(--red-bg);border-color:var(--red);margin-top:14px;">
         <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--ink);">
           <input type="checkbox" id="reprogAdvertencia" style="margin-top:2px;">
@@ -866,6 +837,25 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
       </div>
 
       <button class="btn wood block" style="margin-top:14px;" onclick="reprogramarPago()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Refinanciar (redefine el esquema completo de pago) -->
+<div class="overlay" id="ov-refinanciar">
+  <div class="sheet">
+    <div class="sheet-wrap">
+      <button class="close-x" onclick="closeOverlay('ov-refinanciar')">✕</button>
+      <h2>Refinanciar</h2>
+      <div style="font-weight:700;margin-bottom:10px;" id="refinClientName">Cliente</div>
+      <div class="helper" style="margin-top:0;">Redefine monto, fecha y frecuencia de las cuotas que quedan. Usalo para reorganizar todo el plan, no para un simple atraso puntual (eso es "Reagendar").</div>
+      <div class="field"><label>Pago acordado ($)</label><input type="number" id="esqMonto"></div>
+      <div class="field"><label>Próxima fecha de pago</label><input type="date" id="esqFecha"></div>
+      <div class="field"><label>Esquema</label>
+        <select id="esqFrecuencia"><option value="mensual">Mensual</option><option value="semanal">Semanal</option></select>
+      </div>
+      <div class="muted" id="esqResumen" style="background:#fff;color:#20232A;border-radius:10px;padding:10px;margin-bottom:6px;"></div>
+      <button class="btn wood block" style="margin-top:14px;" onclick="confirmarRefinanciar()">Refinanciar</button>
     </div>
   </div>
 </div>
@@ -1613,7 +1603,8 @@ function openClientDetail(id){
         <div><div class="muted">Agendado</div><div style="font-weight:800;font-size:19px;">${c.fechaPago||'—'}</div></div>
         ${restante>0 ? `<button class="btn wood" onclick="closeOverlay('ov-detail'); openReprogramar('${c.id}');" style="border-radius:50%;width:42px;height:42px;font-size:18px;padding:0;">🗓️</button>` : ''}
       </div>
-      ${restante>0 ? `<button class="btn ghost block" style="margin-bottom:8px;" onclick="closeOverlay('ov-detail'); openReprogramar('${c.id}');">🗓️ Reagendar / reorganizar pagos</button>` : ''}
+      ${restante>0 ? `<button class="btn ghost block" style="margin-bottom:8px;" onclick="closeOverlay('ov-detail'); openReprogramar('${c.id}');">🗓️ Reagendar</button>` : ''}
+      ${restante>0 ? `<button class="btn ghost block" style="margin-bottom:8px;" onclick="closeOverlay('ov-detail'); openRefinanciar('${c.id}');">🔁 Refinanciar / reorganizar todo el plan</button>` : ''}
       <button class="btn ghost block" style="margin-bottom:8px;" onclick="abrirEditarCliente('${c.id}')">✏️ Editar datos</button>
       <div class="card">
         <div class="muted">Saldo</div>
@@ -1709,6 +1700,7 @@ function renderPlanExtraCard(c, p){
       </div>
       ${restante>0 && !p.perdida ? `
       <div style="display:flex;gap:8px;margin-top:8px;">
+        <button class="btn ghost" style="flex:1;font-size:12px;" onclick="closeOverlay('ov-detail'); openRefinanciar('${c.id}','${p.id}');">🔁 Refinanciar</button>
         <button class="btn ghost" style="flex:1;font-size:12px;" onclick="closeOverlay('ov-detail'); abrirDescuento('${c.id}','${p.id}');">🏷️ Descuento</button>
         <button class="btn ghost" style="flex:1;font-size:12px;color:var(--red);" onclick="closeOverlay('ov-detail'); abrirPerdida('${c.id}','${p.id}');">❌ Pérdida</button>
       </div>` : ''}
@@ -2252,7 +2244,6 @@ function confirmarPerdida(){
 let activeReprogClientId = null;
 let activeReprogVisitId = null;
 let activeReprogPlanId = null;
-let modoReprog = 'reagendar';
 function proximaFechaSugerida(t){
   // Sugiere la fecha del próximo período (un mes o una semana después de la fecha
   // que tenía agendada), para no dejar sin querer la reagenda con la fecha de hoy.
@@ -2274,45 +2265,66 @@ function openReprogramar(clientId, visitId, planId){
   document.getElementById('reprogSaldoParcialMonto').textContent = fmtMoney(deudaEstaCuota);
   document.getElementById('saldoModoSumar').checked = true;
   document.getElementById('reprogFecha').value = proximaFechaSugerida(t);
-  document.getElementById('moverFecha').value = selectedAgendaDate || t.fechaPago || todayStr();
-  document.getElementById('esqMonto').value = t.montoCuota || '';
-  document.getElementById('esqFecha').value = t.fechaPago || '';
-  document.getElementById('esqFrecuencia').value = t.frecuencia || 'mensual';
   document.getElementById('reprogAdvertencia').checked = false;
-  setModoReprog('reagendar');
-  actualizarResumenEsquema();
   actualizarVisibilidadOpcionesReagendar();
   openOverlay('ov-reprogramar');
 }
 function actualizarVisibilidadOpcionesReagendar(){
   // Las 3 opciones de qué hacer con la deuda (sumar/repartir/aplazar) solo tienen sentido
-  // si la nueva fecha empuja el cobro a otro mes (un mes realmente salteado). Si la nueva
-  // fecha cae dentro del mismo mes que ya tenía agendado, es solo mover el día — no hay
-  // deuda de un mes entero que resolver, así que se ocultan y se guarda como "sumar" (no
-  // cambia nada más que la fecha).
-  const c = state.clients.find(x=>x.id===activeReprogClientId);
-  if(!c) return;
-  const t = planTarget(c, activeReprogPlanId);
+  // si la nueva fecha de cobro cae en un mes calendario distinto al actual (hoy). Si sigue
+  // siendo este mismo mes, es solo mover el día dentro del período en curso — no hay un mes
+  // entero salteado que resolver, así que se ocultan y se guarda como "sumar" (no cambia
+  // nada más que la fecha).
   const nueva = document.getElementById('reprogFecha').value;
-  const mesOriginal = (t.fechaPago||'').slice(0,7);
+  const mesActual = todayStr().slice(0,7);
   const mesNuevo = (nueva||'').slice(0,7);
-  const mismomes = !nueva || !mesOriginal || mesNuevo===mesOriginal;
+  const mismomes = !nueva || mesNuevo===mesActual;
   document.getElementById('reprogOpcionesDeuda').style.display = mismomes ? 'none' : 'block';
   if(mismomes) document.getElementById('saldoModoSumar').checked = true;
 }
-function setModoReprog(m){
-  modoReprog = m;
-  const radio = document.querySelector('input[name="reprogModo"][value="'+m+'"]');
-  if(radio) radio.checked = true;
-  document.getElementById('modoReagendar').style.display = m==='reagendar' ? 'block':'none';
-  document.getElementById('modoMover').style.display = m==='mover' ? 'block':'none';
-  document.getElementById('modoEsquema').style.display = m==='esquema' ? 'block':'none';
-  if(m==='esquema') actualizarResumenEsquema();
+/* ---------- Refinanciar (redefine el esquema completo de pago) ---------- */
+let activeRefinClientId = null;
+let activeRefinPlanId = null;
+function openRefinanciar(clientId, planId){
+  activeRefinClientId = clientId;
+  activeRefinPlanId = planId || null;
+  const c = state.clients.find(x=>x.id===clientId);
+  const t = planTarget(c, activeRefinPlanId);
+  document.getElementById('refinClientName').textContent = c.nombre + ' · ' + c.code + (t.producto && (c.planesExtra||[]).length ? ' · '+t.producto : '');
+  document.getElementById('esqMonto').value = t.montoCuota || '';
+  document.getElementById('esqFecha').value = t.fechaPago || '';
+  document.getElementById('esqFrecuencia').value = t.frecuencia || 'mensual';
+  actualizarResumenEsquema();
+  openOverlay('ov-refinanciar');
+}
+function confirmarRefinanciar(){
+  const c = state.clients.find(x=>x.id===activeRefinClientId);
+  if(!c) return;
+  const t = planTarget(c, activeRefinPlanId);
+  const fechaAnterior = t.fechaPago;
+  const nuevoMonto = Number(document.getElementById('esqMonto').value||0);
+  const nuevaFecha = document.getElementById('esqFecha').value;
+  const esquema = document.getElementById('esqFrecuencia').value;
+  if(!nuevoMonto || !nuevaFecha){ toast('Completá monto y fecha'); return; }
+  const restante = (t.cuotas - t.cuotasPagadas) * t.montoCuota - (t.acumuladoParcial||0);
+  const n = Math.ceil(restante / nuevoMonto);
+  t.montoCuota = nuevoMonto;
+  t.frecuencia = esquema;
+  t.fechaPago = nuevaFecha;
+  t.cuotasPagadas = 0;
+  t.cuotas = n;
+  t.acumuladoParcial = 0;
+  state.reprogramaciones.push({id:uid(), clientId:c.id, planId:activeRefinPlanId, fecha:todayStr(), fechaAnterior, fechaNueva:t.fechaPago, modo:'esquema'});
+  state.visits.filter(x=>x.clientId===c.id && (x.planId||null)===activeRefinPlanId && !x.done).forEach(x=>{ x.done = true; x.resultado = 'sin_pago'; });
+  saveState();
+  closeOverlay('ov-refinanciar');
+  renderAll();
+  toast('Esquema de pago redefinido');
 }
 function actualizarResumenEsquema(){
-  const c = state.clients.find(x=>x.id===activeReprogClientId);
+  const c = state.clients.find(x=>x.id===activeRefinClientId);
   if(!c) return;
-  const t = planTarget(c, activeReprogPlanId);
+  const t = planTarget(c, activeRefinPlanId);
   const restante = (t.cuotas - t.cuotasPagadas) * t.montoCuota - (t.acumuladoParcial||0);
   const nuevoMonto = Number(document.getElementById('esqMonto').value || t.montoCuota || 0);
   const nuevaFecha = document.getElementById('esqFecha').value || t.fechaPago;
@@ -2339,48 +2351,29 @@ function reprogramarPago(){
   let notaAccion = '';
   const fechaAnterior = t.fechaPago;
 
-  // Modo "No pagó / reagendar": el usuario elige qué hacer con la deuda de la cuota no pagada.
-  const saldoModo = modoReprog==='reagendar' ? (document.querySelector('input[name="saldoParcialModo"]:checked')||{}).value : null;
+  // El usuario elige qué hacer con la deuda de la cuota no pagada (solo aplica si la nueva
+  // fecha cae en un mes distinto al actual; si no, actualizarVisibilidadOpcionesReagendar ya
+  // dejó forzado "sumar", que en la práctica es no tocar nada más que la fecha).
+  const saldoModo = (document.querySelector('input[name="saldoParcialModo"]:checked')||{}).value;
 
-  if(modoReprog==='reagendar'){
-    const nueva = document.getElementById('reprogFecha').value;
-    if(!nueva){ toast('Elegí una fecha'); return; }
-    t.fechaPago = nueva;
-    if(saldoModo==='aplazar'){
-      t.cuotas = (t.cuotas||0) + 1;
-      notaAccion = 'Aplazado un mes (se agregó una cuota más al plan)';
-    } else {
-      notaAccion = 'Reagendado para '+nueva;
-    }
-  } else if(modoReprog==='mover'){
-    const nueva = document.getElementById('moverFecha').value;
-    if(!nueva){ toast('Elegí una fecha'); return; }
-    t.fechaPago = nueva;
-    notaAccion = 'Agenda movida, inicia el '+nueva;
-  } else if(modoReprog==='esquema'){
-    const nuevoMonto = Number(document.getElementById('esqMonto').value||0);
-    const nuevaFecha = document.getElementById('esqFecha').value;
-    const esquema = document.getElementById('esqFrecuencia').value;
-    if(!nuevoMonto || !nuevaFecha){ toast('Completá monto y fecha'); return; }
-    const restante = (t.cuotas - t.cuotasPagadas) * t.montoCuota - (t.acumuladoParcial||0);
-    const n = Math.ceil(restante / nuevoMonto);
-    t.montoCuota = nuevoMonto;
-    t.frecuencia = esquema;
-    t.fechaPago = nuevaFecha;
-    t.cuotasPagadas = 0;
-    t.cuotas = n;
-    t.acumuladoParcial = 0;
-    notaAccion = 'Esquema de pago redefinido';
+  const nueva = document.getElementById('reprogFecha').value;
+  if(!nueva){ toast('Elegí una fecha'); return; }
+  t.fechaPago = nueva;
+  if(saldoModo==='aplazar'){
+    t.cuotas = (t.cuotas||0) + 1;
+    notaAccion = 'Aplazado un mes (se agregó una cuota más al plan)';
+  } else {
+    notaAccion = 'Reagendado para '+nueva;
   }
 
-  if(saldoModo==='repartir' && modoReprog==='reagendar'){
+  if(saldoModo==='repartir'){
     const cuotasRestantes = Math.max(1, t.cuotas - t.cuotasPagadas);
     const deudaTotal = cuotasRestantes*t.montoCuota - (t.acumuladoParcial||0);
     t.montoCuota = Math.round((deudaTotal/cuotasRestantes)*100)/100;
     t.acumuladoParcial = 0;
     notaAccion += ' · saldo repartido en las cuotas que quedan';
   }
-  state.reprogramaciones.push({id:uid(), clientId:c.id, planId:activeReprogPlanId, fecha:todayStr(), fechaAnterior, fechaNueva:t.fechaPago, modo:modoReprog});
+  state.reprogramaciones.push({id:uid(), clientId:c.id, planId:activeReprogPlanId, fecha:todayStr(), fechaAnterior, fechaNueva:t.fechaPago, modo:'reagendar'});
 
   if(document.getElementById('reprogAdvertencia').checked){
     c.puntosMalos = (c.puntosMalos||0) + 1;
