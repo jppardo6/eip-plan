@@ -353,6 +353,16 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
         <div id="metaMes"></div>
       </div>
       <div class="card">
+        <h3>Ritmo de cobranza semanal</h3>
+        <div class="muted" style="margin-bottom:8px;">Divide el mes en 4 semanas según las fechas de cobro ya agendadas, y compara contra lo efectivamente cobrado</div>
+        <div id="ritmoCobranzaResumen" style="margin-bottom:10px;"></div>
+        <div id="ritmoCobranzaBox"></div>
+      </div>
+      <div class="card">
+        <h3>Estimación por promedio histórico</h3>
+        <div id="estimacionCobranzaBox"></div>
+      </div>
+      <div class="card">
         <h3>Semáforo de vencimientos</h3>
         <div style="font-size:24px;font-weight:800;margin-bottom:4px;" id="scoreAlCorriente">$0</div>
         <div class="muted" style="margin-bottom:10px;">Al corriente · Próximo mes: <b id="scoreProximoMes" style="color:var(--ink);">$0</b></div>
@@ -3028,6 +3038,8 @@ function renderBalance(){
       <div style="width:${pctMeta}%;background:var(--wood);height:100%;"></div>
     </div>` : `<div class="muted">Todavía no cargaste un objetivo mensual. Andá a "Más" para definirlo.</div>`;
 
+  renderRitmoCobranza();
+
   const totals = {verde:0, amarillo:0, naranja:0, rojo:0};
   const counts = {verde:0, amarillo:0, naranja:0, rojo:0};
   let alCorriente = 0, alCorrienteCount = 0;
@@ -3211,6 +3223,126 @@ function renderAjustesMes(){
     <div class="rubro-row"><span>Ingresos sin categorizar</span><b>${fmtMoney(totalVentas)} · ${ventasAjuste.length}</b></div>
     <div class="rubro-row"><span>Gastos sin categorizar</span><b>${fmtMoney(totalGastos)} · ${gastosAjuste.length}</b></div>
   ` : `<div class="muted">Ningún ajuste cargado este mes 👍</div>`;
+}
+// Divide el mes en 4 tramos (1-7, 8-14, 15-21, 22-fin) y calcula, para cada uno, cuánto se
+// espera cobrar (según la fecha de cobro ya agendada de cada cuota pendiente que vence este
+// mes) contra lo que efectivamente se cobró en esos mismos días. No incluye cuotas atrasadas
+// de meses anteriores (eso ya lo cubre el Semáforo de vencimientos) — es solo el pulso de la
+// semana en curso contra lo planificado para este mes.
+function renderRitmoCobranza(){
+  const mesActual = todayStr().slice(0,7);
+  const diaHoy = Number(todayStr().slice(8,10));
+  const ultimoDiaMes = new Date(Number(mesActual.slice(0,4)), Number(mesActual.slice(5,7)), 0).getDate();
+  const semanas = [
+    {label:'Semana 1 (día 1-7)', desde:1, hasta:7},
+    {label:'Semana 2 (día 8-14)', desde:8, hasta:14},
+    {label:'Semana 3 (día 15-21)', desde:15, hasta:21},
+    {label:'Semana 4 (día 22-'+ultimoDiaMes+')', desde:22, hasta:ultimoDiaMes},
+  ];
+  const diaDeSemana = dia => semanas.findIndex(s=> dia>=s.desde && dia<=s.hasta);
+
+  const esperadoPorSemana = semanas.map(()=>0);
+  todosLosPlanesPendientes().forEach(({t})=>{
+    if(!(t.fechaPago||'').startsWith(mesActual)) return;
+    const idx = diaDeSemana(Number(t.fechaPago.slice(8,10)));
+    if(idx>=0) esperadoPorSemana[idx] += t.montoCuota;
+  });
+  const totalEsperado = esperadoPorSemana.reduce((a,b)=>a+b,0);
+
+  const cobradoPorSemana = semanas.map(()=>0);
+  const movimientosMes = [
+    ...state.payments.filter(p=>p.fecha.startsWith(mesActual)).map(p=>({fecha:p.fecha, monto:p.monto})),
+    ...state.sales.filter(s=>!s.clientId && s.fecha.startsWith(mesActual)).map(s=>({fecha:s.fecha, monto:s.monto})),
+  ];
+  movimientosMes.forEach(m=>{
+    const idx = diaDeSemana(Number(m.fecha.slice(8,10)));
+    if(idx>=0) cobradoPorSemana[idx] += m.monto;
+  });
+  const totalCobrado = cobradoPorSemana.reduce((a,b)=>a+b,0);
+  const semanaActualIdx = diaDeSemana(diaHoy);
+
+  renderEstimacionCobranza(totalEsperado);
+
+  if(totalEsperado<=0){
+    document.getElementById('ritmoCobranzaResumen').innerHTML = '';
+    document.getElementById('ritmoCobranzaBox').innerHTML = `<div class="muted">Ninguna cuota tiene fecha de cobro dentro de este mes todavía.</div>`;
+    return;
+  }
+
+  const pctMesTranscurrido = Math.round(diaHoy/ultimoDiaMes*100);
+  const pctCobradoTotal = Math.round(totalCobrado/totalEsperado*100);
+  const vaAlDia = pctCobradoTotal >= pctMesTranscurrido;
+  document.getElementById('ritmoCobranzaResumen').innerHTML = `
+    <div class="rubro-row"><span>Cobrado del mes</span><b>${fmtMoney(totalCobrado)} de ${fmtMoney(totalEsperado)} esperado</b></div>
+    <div style="color:${vaAlDia?'var(--green)':'var(--red)'};font-weight:700;font-size:13px;margin-top:4px;">
+      ${pctCobradoTotal}% cobrado · ya pasó el ${pctMesTranscurrido}% del mes ${vaAlDia ? '· vas al día 👍' : '· vas atrasado respecto al calendario'}
+    </div>`;
+
+  document.getElementById('ritmoCobranzaBox').innerHTML = semanas.map((s,i)=>{
+    const pctEsperadoDelMes = Math.round(esperadoPorSemana[i]/totalEsperado*100);
+    const pctCobradoDeEsaSemana = esperadoPorSemana[i] ? Math.min(100, Math.round(cobradoPorSemana[i]/esperadoPorSemana[i]*100)) : (cobradoPorSemana[i]>0 ? 100 : 0);
+    const esActual = i===semanaActualIdx;
+    return `
+    <div class="rubro-row" style="${esActual?'font-weight:700;':''}">
+      <span>${s.label}${esActual?' · en curso':''}</span>
+      <span style="text-align:right;"><b>${fmtMoney(cobradoPorSemana[i])}</b> <span class="muted" style="font-size:12px;">de ${fmtMoney(esperadoPorSemana[i])} (${pctEsperadoDelMes}% del mes)</span></span>
+    </div>
+    <div style="background:rgba(255,255,255,0.08);border-radius:8px;height:8px;overflow:hidden;margin-bottom:10px;">
+      <div style="width:${pctCobradoDeEsaSemana}%;background:${pctCobradoDeEsaSemana>=100?'var(--green)':'var(--wood)'};height:100%;"></div>
+    </div>`;
+  }).join('');
+}
+// Promedia cómo se distribuyó realmente lo cobrado (pagos + venta rápida) entre las mismas 4
+// semanas del mes, en cada uno de los últimos 4 meses CERRADOS (sin contar el mes en curso).
+// Toma siempre "los 4 meses anteriores a hoy" calculados con fechas, así que el cambio de mes
+// se hace solo, sin tocar nada. Sirve como segunda referencia además del calendario de
+// vencimientos: cómo viene pagando la gente en la práctica, más allá de la fecha agendada.
+function renderEstimacionCobranza(totalEsperadoEsteMes){
+  const semanasDe = (mes) => {
+    const ultimoDia = new Date(Number(mes.slice(0,4)), Number(mes.slice(5,7)), 0).getDate();
+    return [{desde:1,hasta:7},{desde:8,hasta:14},{desde:15,hasta:21},{desde:22,hasta:ultimoDia}];
+  };
+  const mesesHistoricos = [];
+  for(let i=4;i>=1;i--){
+    const d = new Date(); d.setDate(1); d.setMonth(d.getMonth()-i);
+    mesesHistoricos.push(d.toISOString().slice(0,7));
+  }
+
+  const pctPorSemanaPorMes = [];
+  mesesHistoricos.forEach(mes=>{
+    const semanas = semanasDe(mes);
+    const totales = semanas.map(()=>0);
+    const movimientos = [
+      ...state.payments.filter(p=>p.fecha.startsWith(mes)).map(p=>({fecha:p.fecha, monto:p.monto})),
+      ...state.sales.filter(s=>!s.clientId && s.fecha.startsWith(mes)).map(s=>({fecha:s.fecha, monto:s.monto})),
+    ];
+    movimientos.forEach(m=>{
+      const dia = Number(m.fecha.slice(8,10));
+      const idx = semanas.findIndex(s=>dia>=s.desde && dia<=s.hasta);
+      if(idx>=0) totales[idx] += m.monto;
+    });
+    const totalMes = totales.reduce((a,b)=>a+b,0);
+    if(totalMes>0) pctPorSemanaPorMes.push(totales.map(t=> t/totalMes*100));
+  });
+
+  const box = document.getElementById('estimacionCobranzaBox');
+  if(pctPorSemanaPorMes.length===0){
+    box.innerHTML = `<div class="muted">Todavía no hay al menos un mes cerrado con cobranza cargada para poder estimar un promedio.</div>`;
+    return;
+  }
+
+  const promedioPorSemana = [0,1,2,3].map(i=>{
+    const vals = pctPorSemanaPorMes.map(p=>p[i]);
+    return vals.reduce((a,b)=>a+b,0) / vals.length;
+  });
+  const labels = ['Semana 1 (día 1-7)','Semana 2 (día 8-14)','Semana 3 (día 15-21)','Semana 4 (día 22-fin)'];
+
+  box.innerHTML = `<div class="muted" style="margin-bottom:8px;">Promedio de los últimos ${pctPorSemanaPorMes.length} mes(es) cerrado(s) (no incluye el mes en curso)</div>` +
+    labels.map((label,i)=>{
+      const pct = Math.round(promedioPorSemana[i]);
+      const estimado = totalEsperadoEsteMes>0 ? fmtMoney(Math.round(totalEsperadoEsteMes * promedioPorSemana[i]/100)) : null;
+      return `<div class="rubro-row"><span>${label}</span><span style="text-align:right;"><b>${pct}%</b>${estimado ? ` <span class="muted" style="font-size:12px;">≈ ${estimado}</span>` : ''}</span></div>`;
+    }).join('');
 }
 // Recorre las cargas de Combustible que tengan kilometraje cargado, ordenadas por km, y calcula
 // cuánto se gastó por cada km recorrido entre una carga y la siguiente. Si el kilometraje da la
