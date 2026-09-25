@@ -3241,13 +3241,17 @@ function renderRitmoCobranza(){
   ];
   const diaDeSemana = dia => semanas.findIndex(s=> dia>=s.desde && dia<=s.hasta);
 
-  const esperadoPorSemana = semanas.map(()=>0);
+  // "Esperado" de una semana = lo que YA se cobró en esa semana (ya resuelto, no puede bajar)
+  // + lo que TODAVÍA está pendiente y tiene fecha de cobro agendada en esa semana. Si solo
+  // contáramos lo pendiente, una cuota deja de "esperarse" en cuanto se cobra (su fecha pasa
+  // al mes siguiente) y las semanas ya cobradas quedarían siempre en 0%, aunque haya habido
+  // cobranza real — por eso hay que sumar las dos partes para que el % de cada semana sea real.
+  const pendientePorSemana = semanas.map(()=>0);
   todosLosPlanesPendientes().forEach(({t})=>{
     if(!(t.fechaPago||'').startsWith(mesActual)) return;
     const idx = diaDeSemana(Number(t.fechaPago.slice(8,10)));
-    if(idx>=0) esperadoPorSemana[idx] += t.montoCuota;
+    if(idx>=0) pendientePorSemana[idx] += t.montoCuota;
   });
-  const totalEsperado = esperadoPorSemana.reduce((a,b)=>a+b,0);
 
   const cobradoPorSemana = semanas.map(()=>0);
   const movimientosMes = [
@@ -3261,11 +3265,14 @@ function renderRitmoCobranza(){
   const totalCobrado = cobradoPorSemana.reduce((a,b)=>a+b,0);
   const semanaActualIdx = diaDeSemana(diaHoy);
 
+  const esperadoPorSemana = semanas.map((_,i)=> cobradoPorSemana[i] + pendientePorSemana[i]);
+  const totalEsperado = esperadoPorSemana.reduce((a,b)=>a+b,0);
+
   renderEstimacionCobranza(totalEsperado);
 
   if(totalEsperado<=0){
     document.getElementById('ritmoCobranzaResumen').innerHTML = '';
-    document.getElementById('ritmoCobranzaBox').innerHTML = `<div class="muted">Ninguna cuota tiene fecha de cobro dentro de este mes todavía.</div>`;
+    document.getElementById('ritmoCobranzaBox').innerHTML = `<div class="muted">Todavía no hay cobranza ni cuotas agendadas para este mes.</div>`;
     return;
   }
 
