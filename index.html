@@ -3359,13 +3359,11 @@ function renderEstimacionCobranza(totalEsperadoEsteMes){
       return `<div class="rubro-row"><span>${label}</span><span style="text-align:right;"><b>${pct}%</b>${estimado ? ` <span class="muted" style="font-size:12px;">≈ ${estimado}</span>` : ''}</span></div>`;
     }).join('');
 }
-// Gráfico de líneas: mes en curso + próximos 4, con dos series. "Según cartera agendada" suma,
-// para cada mes, el montoCuota de todos los planes pendientes cuya fecha de cobro cae en ese
-// mes — se recalcula sola cada vez que se carga una venta a crédito nueva o se reagenda/refinancia
-// algo, porque esas cuotas futuras entran a sumar en el mes que les corresponda. "Promedio
-// histórico" es una referencia plana con el promedio de lo realmente cobrado (cuotas + venta
-// rápida) en los últimos meses cerrados, para comparar la cartera comprometida contra el ritmo
-// real que vengo teniendo.
+// Gráfico de líneas: mes en curso + próximos 4. Suma, para cada mes, el montoCuota de todos
+// los planes pendientes cuya fecha de cobro cae en ese mes — se recalcula sola cada vez que se
+// carga una venta a crédito nueva o se reagenda/refinancia algo, porque esas cuotas futuras
+// entran a sumar en el mes que les corresponda. Al tocar un punto se muestra un cartelito con
+// el monto exacto de ese mes (toggle: tocar el mismo punto de nuevo lo oculta).
 function renderProyeccionCobranza(){
   const hoy = new Date();
   const meses = [];
@@ -3384,42 +3382,45 @@ function renderProyeccionCobranza(){
     .filter(({t})=> (t.fechaPago||'').startsWith(m))
     .reduce((s,{t})=> s + t.montoCuota, 0));
 
-  const mesesCerrados = [];
-  for(let i=4;i>=1;i--){
-    const d = new Date(); d.setDate(1); d.setMonth(d.getMonth()-i);
-    mesesCerrados.push(d.toISOString().slice(0,7));
-  }
-  const cobradoPorMesCerrado = mesesCerrados.map(m =>
-    state.payments.filter(p=>p.fecha.startsWith(m)).reduce((s,p)=>s+p.monto,0) +
-    state.sales.filter(s=>!s.clientId && s.fecha.startsWith(m)).reduce((s,x)=>s+x.monto,0)
-  );
-  const promedioHistorico = cobradoPorMesCerrado.length ? cobradoPorMesCerrado.reduce((a,b)=>a+b,0)/cobradoPorMesCerrado.length : 0;
-  const promedio = meses.map(()=> promedioHistorico);
-
-  const W = 320, H = 140, padL = 6, padR = 6, padT = 10, padB = 20;
+  const W = 320, H = 150, padL = 8, padR = 8, padT = 26, padB = 20;
   const plotW = W-padL-padR, plotH = H-padT-padB;
-  const maxVal = Math.max(1, ...proyeccion, ...promedio) * 1.15;
+  const maxVal = Math.max(1, ...proyeccion) * 1.15;
   const x = i => padL + (meses.length>1 ? plotW * i/(meses.length-1) : plotW/2);
   const y = v => padT + plotH - (v/maxVal)*plotH;
-  const puntos = arr => arr.map((v,i)=>`${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
-  const circulos = (arr, color) => arr.map((v,i)=>`<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="3" fill="${color}"></circle>`).join('');
+  const puntos = proyeccion.map((v,i)=>`${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+
+  const puntosSvg = meses.map((m,i)=>{
+    const px = x(i).toFixed(1), py = y(proyeccion[i]).toFixed(1);
+    const texto = fmtMoney(proyeccion[i]);
+    const anchoTexto = Math.max(46, texto.length*5.6 + 12);
+    return `
+    <circle cx="${px}" cy="${py}" r="3" fill="var(--wood)"></circle>
+    <circle cx="${px}" cy="${py}" r="11" fill="transparent" style="cursor:pointer;" onclick="mostrarProyTooltip(${i})"></circle>
+    <g id="proyTooltip${i}" style="display:none;pointer-events:none;">
+      <rect x="${(px-anchoTexto/2).toFixed(1)}" y="${(py-24).toFixed(1)}" width="${anchoTexto}" height="16" rx="4" fill="#20232A"></rect>
+      <text x="${px}" y="${(py-12.5).toFixed(1)}" font-size="9" fill="#fff" text-anchor="middle">${texto}</text>
+    </g>`;
+  }).join('');
 
   document.getElementById('proyeccionCobranzaChart').innerHTML = `
     <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block;">
-      <polyline points="${puntos(promedio)}" fill="none" stroke="var(--ink-soft)" stroke-width="2" stroke-dasharray="4,3"></polyline>
-      <polyline points="${puntos(proyeccion)}" fill="none" stroke="var(--wood)" stroke-width="2.5"></polyline>
-      ${circulos(promedio, 'var(--ink-soft)')}
-      ${circulos(proyeccion, 'var(--wood)')}
-      ${meses.map((m,i)=>`<text x="${x(i).toFixed(1)}" y="${H-6}" font-size="9" fill="var(--ink-soft)" text-anchor="middle">${nombreMes(m)}</text>`).join('')}
-    </svg>`;
+      <polyline points="${puntos}" fill="none" stroke="var(--wood)" stroke-width="2.5"></polyline>
+      ${puntosSvg}
+      ${meses.map((m,i)=>`<text x="${x(i).toFixed(1)}" y="${H-6}" font-size="9" fill="var(--ink-soft)" text-anchor="middle">${nombreMes(m)}${m===mesActual?' (hoy)':''}</text>`).join('')}
+    </svg>
+    <div class="muted" style="text-align:center;font-size:11px;margin-top:2px;">Tocá un punto para ver el monto</div>`;
 
-  document.getElementById('proyeccionCobranzaLeyenda').innerHTML = `
-    <div class="rubro-row"><span><span class="dot" style="background:var(--wood)"></span>Según cartera ya agendada (se mueve con lo que vendas este mes)</span></div>
-    <div class="rubro-row"><span><span class="dot" style="background:var(--ink-soft)"></span>Promedio de los últimos ${cobradoPorMesCerrado.length} mes(es) cerrado(s): ${fmtMoney(promedioHistorico)}</span></div>`;
+  document.getElementById('proyeccionCobranzaLeyenda').innerHTML = '';
 
   document.getElementById('proyeccionCobranzaTabla').innerHTML = meses.map((m,i)=>`
-    <div class="rubro-row"><span>${nombreMes(m)} ${m.slice(0,4)}${m===mesActual?' · en curso':''}</span><span style="text-align:right;"><b>${fmtMoney(proyeccion[i])}</b> <span class="muted" style="font-size:11px;">vs prom. ${fmtMoney(promedioHistorico)}</span></span></div>
+    <div class="rubro-row"><span>${nombreMes(m)} ${m.slice(0,4)}${m===mesActual?' · en curso':''}</span><b>${fmtMoney(proyeccion[i])}</b></div>
   `).join('');
+}
+function mostrarProyTooltip(i){
+  const el = document.getElementById('proyTooltip'+i);
+  const yaVisible = el && el.style.display==='block';
+  document.querySelectorAll('[id^="proyTooltip"]').forEach(x=> x.style.display='none');
+  if(el && !yaVisible) el.style.display = 'block';
 }
 // Recorre las cargas de Combustible que tengan kilometraje cargado, ordenadas por km, y calcula
 // cuánto se gastó por cada km recorrido entre una carga y la siguiente. Si el kilometraje da la
