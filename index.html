@@ -763,6 +763,7 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
     <div class="sheet-wrap">
       <button class="close-x" onclick="closeOverlay('ov-compra-proveedor')">✕</button>
       <h2>Cargar compra</h2>
+      <div class="field"><label>Fecha</label><input type="date" id="cpFecha"></div>
       <div class="field"><label>Producto</label><input id="cpProducto" placeholder="Ej: Juego de comedor 6 sillas"></div>
       <div class="field"><label>Costo del producto ($)</label><input type="number" id="cpCosto"></div>
       <div class="field">
@@ -782,6 +783,7 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
     <div class="sheet-wrap">
       <button class="close-x" onclick="closeOverlay('ov-servicio-proveedor')">✕</button>
       <h2>Cargar servicio prestado</h2>
+      <div class="field"><label>Fecha</label><input type="date" id="spFecha"></div>
       <div class="field"><label>Descripción</label><input id="spDescripcion" placeholder="Ej: Flete de mercadería a depósito"></div>
       <div class="field"><label>Monto ($)</label><input type="number" id="spMonto"></div>
       <button class="btn wood block" onclick="guardarServicioProveedor()">Guardar servicio</button>
@@ -3550,17 +3552,34 @@ function renderProveedorDetailBody(){
   const totalServiciosMes = serviciosMes.reduce((s,x)=>s+x.monto,0);
   const diferencia = totalComprasMes - totalServiciosMes;
 
+  // Agrupa compras y servicios por mes (usando la fecha que se cargó, no la de hoy) para
+  // poder revisar movimientos anteriores que se hayan cargado después, con el mes en curso
+  // arriba de todo.
   const eventos = [
     ...compras.map(c=>({...c, _tipo:'compra'})),
     ...servicios.map(s=>({...s, _tipo:'servicio'}))
   ].sort((a,b)=> b.fecha.localeCompare(a.fecha));
+  const grupos = {};
+  eventos.forEach(e=>{ (grupos[e.fecha.slice(0,7)] = grupos[e.fecha.slice(0,7)]||[]).push(e); });
+  const mesesOrdenados = Object.keys(grupos).sort((a,b)=> b.localeCompare(a));
 
-  const filas = eventos.map(e=>{
-    if(e._tipo==='compra'){
-      const total = e.costo + (e.flete||0);
-      return `<div class="rubro-row"><span>${e.fecha} · ${e.producto}${e.flete?' (+flete '+fmtMoney(e.flete)+')':''}</span><b>${fmtMoney(total)}</b></div>`;
-    }
-    return `<div class="rubro-row"><span>${e.fecha} · ${e.descripcion}</span><b style="color:var(--green)">-${fmtMoney(e.monto)}</b></div>`;
+  const filas = mesesOrdenados.map(mes=>{
+    const labelMes = new Date(mes+'-02T00:00:00').toLocaleDateString('es-AR',{month:'long', year:'numeric'});
+    const comprasDelMes = grupos[mes].filter(e=>e._tipo==='compra').reduce((s,e)=>s+e.costo+(e.flete||0),0);
+    const serviciosDelMes = grupos[mes].filter(e=>e._tipo==='servicio').reduce((s,e)=>s+e.monto,0);
+    const filasDelMes = grupos[mes].map(e=>{
+      const btnBorrar = `<button class="btn ghost" style="padding:4px 8px;font-size:11px;margin-left:8px;" onclick="eliminarMovimientoProveedor('${e._tipo}','${e.id}')">🗑️</button>`;
+      if(e._tipo==='compra'){
+        const total = e.costo + (e.flete||0);
+        return `<div class="rubro-row"><span>${e.fecha} · ${e.producto}${e.flete?' (+flete '+fmtMoney(e.flete)+')':''}</span><span style="display:flex;align-items:center;"><b>${fmtMoney(total)}</b>${btnBorrar}</span></div>`;
+      }
+      return `<div class="rubro-row"><span>${e.fecha} · ${e.descripcion}</span><span style="display:flex;align-items:center;"><b style="color:var(--green)">-${fmtMoney(e.monto)}</b>${btnBorrar}</span></div>`;
+    }).join('');
+    return `<div style="margin-bottom:14px;">
+      <div style="font-weight:700;margin-bottom:2px;text-transform:capitalize;">${labelMes}${mes===mesActual?' · en curso':''}</div>
+      <div class="muted" style="margin-bottom:6px;font-size:12px;">Comprado ${fmtMoney(comprasDelMes)} · Servicios ${fmtMoney(serviciosDelMes)}</div>
+      ${filasDelMes}
+    </div>`;
   }).join('');
 
   document.getElementById('provDetailBody').innerHTML = `
@@ -3574,35 +3593,48 @@ function renderProveedorDetailBody(){
       <button class="btn wood" style="flex:1;" onclick="abrirCompraProveedor()">+ Compra</button>
       <button class="btn ghost" style="flex:1;" onclick="abrirServicioProveedor()">+ Servicio</button>
     </div>
-    <div class="card"><h3>Movimientos</h3>${filas || '<div class="muted">Sin movimientos todavía.</div>'}</div>
+    <div class="card"><h3>Movimientos por mes</h3>${filas || '<div class="muted">Sin movimientos todavía.</div>'}</div>
   `;
 }
+function eliminarMovimientoProveedor(tipo, id){
+  if(!confirm('¿Borrar este movimiento?')) return;
+  if(tipo==='compra') state.comprasProveedor = state.comprasProveedor.filter(x=>x.id!==id);
+  else state.serviciosProveedor = state.serviciosProveedor.filter(x=>x.id!==id);
+  saveState();
+  renderProveedorDetailBody();
+  renderMas();
+  toast('Movimiento borrado');
+}
 function abrirCompraProveedor(){
+  document.getElementById('cpFecha').value = todayStr();
   document.getElementById('cpProducto').value=''; document.getElementById('cpCosto').value='';
   document.getElementById('cpTieneFlete').checked=false; document.getElementById('cpFlete').value='';
   document.getElementById('cpFleteField').style.display='none';
   openOverlay('ov-compra-proveedor');
 }
 function guardarCompraProveedor(){
+  const fecha = document.getElementById('cpFecha').value || todayStr();
   const producto = document.getElementById('cpProducto').value.trim();
   const costo = Number(document.getElementById('cpCosto').value||0);
   const tieneFlete = document.getElementById('cpTieneFlete').checked;
   const flete = tieneFlete ? Number(document.getElementById('cpFlete').value||0) : 0;
   if(!producto || !costo){ toast('Completá producto y costo'); return; }
-  state.comprasProveedor.push({id:uid(), proveedorId:activeProveedorId, producto, costo, flete, fecha:todayStr()});
+  state.comprasProveedor.push({id:uid(), proveedorId:activeProveedorId, producto, costo, flete, fecha});
   saveState(); closeOverlay('ov-compra-proveedor');
   renderProveedorDetailBody(); renderMas();
   toast('Compra guardada');
 }
 function abrirServicioProveedor(){
+  document.getElementById('spFecha').value = todayStr();
   document.getElementById('spDescripcion').value=''; document.getElementById('spMonto').value='';
   openOverlay('ov-servicio-proveedor');
 }
 function guardarServicioProveedor(){
+  const fecha = document.getElementById('spFecha').value || todayStr();
   const descripcion = document.getElementById('spDescripcion').value.trim();
   const monto = Number(document.getElementById('spMonto').value||0);
   if(!descripcion || !monto){ toast('Completá descripción y monto'); return; }
-  state.serviciosProveedor.push({id:uid(), proveedorId:activeProveedorId, descripcion, monto, fecha:todayStr()});
+  state.serviciosProveedor.push({id:uid(), proveedorId:activeProveedorId, descripcion, monto, fecha});
   saveState(); closeOverlay('ov-servicio-proveedor');
   renderProveedorDetailBody(); renderMas();
   toast('Servicio guardado');
