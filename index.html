@@ -3390,20 +3390,27 @@ function renderProyeccionCobranza(){
   const puntos = proyeccion.map((v,i)=>`${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
 
   const puntosSvg = meses.map((m,i)=>{
-    const px = x(i).toFixed(1), py = y(proyeccion[i]).toFixed(1);
+    const pxN = x(i), pyN = y(proyeccion[i]);
     const texto = fmtMoney(proyeccion[i]);
     const anchoTexto = Math.max(46, texto.length*5.6 + 12);
+    // El cartelito se centra en el punto, pero si eso lo saca del área visible del gráfico
+    // (los puntos de los extremos, mes 1 y mes 5), se lo recorta para que quede siempre
+    // adentro — si no, el texto queda cortado por fuera del viewBox y no se ve al tocar.
+    let rectX = pxN - anchoTexto/2;
+    rectX = Math.max(2, Math.min(W - anchoTexto - 2, rectX));
+    const textX = rectX + anchoTexto/2;
+    const rectY = Math.max(2, pyN - 24);
     return `
-    <circle cx="${px}" cy="${py}" r="3" fill="var(--wood)"></circle>
-    <circle cx="${px}" cy="${py}" r="11" fill="transparent" style="cursor:pointer;" onclick="mostrarProyTooltip(${i})"></circle>
+    <circle cx="${pxN.toFixed(1)}" cy="${pyN.toFixed(1)}" r="3" fill="var(--wood)"></circle>
+    <circle cx="${pxN.toFixed(1)}" cy="${pyN.toFixed(1)}" r="12" fill="transparent" style="cursor:pointer;" onclick="mostrarProyTooltip(${i})"></circle>
     <g id="proyTooltip${i}" style="display:none;pointer-events:none;">
-      <rect x="${(px-anchoTexto/2).toFixed(1)}" y="${(py-24).toFixed(1)}" width="${anchoTexto}" height="16" rx="4" fill="#20232A"></rect>
-      <text x="${px}" y="${(py-12.5).toFixed(1)}" font-size="9" fill="#fff" text-anchor="middle">${texto}</text>
+      <rect x="${rectX.toFixed(1)}" y="${rectY.toFixed(1)}" width="${anchoTexto}" height="16" rx="4" fill="#20232A"></rect>
+      <text x="${textX.toFixed(1)}" y="${(rectY+11.5).toFixed(1)}" font-size="9" fill="#fff" text-anchor="middle">${texto}</text>
     </g>`;
   }).join('');
 
   document.getElementById('proyeccionCobranzaChart').innerHTML = `
-    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block;">
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block;overflow:visible;">
       <polyline points="${puntos}" fill="none" stroke="var(--wood)" stroke-width="2.5"></polyline>
       ${puntosSvg}
       ${meses.map((m,i)=>`<text x="${x(i).toFixed(1)}" y="${H-6}" font-size="9" fill="var(--ink-soft)" text-anchor="middle">${nombreMes(m)}${m===mesActual?' (hoy)':''}</text>`).join('')}
