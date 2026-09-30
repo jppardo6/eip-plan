@@ -3377,10 +3377,25 @@ function renderProyeccionCobranza(){
     return d.toLocaleDateString('es-AR',{month:'short'}).replace('.','');
   };
 
-  const pendientes = todosLosPlanesPendientes();
-  const proyeccion = meses.map(m => pendientes
-    .filter(({t})=> (t.fechaPago||'').startsWith(m))
-    .reduce((s,{t})=> s + t.montoCuota, 0));
+  // Para cada plan pendiente, proyecta TODAS las cuotas que le quedan (no solo la próxima que
+  // tiene guardada en fechaPago), avanzando la fecha cuota a cuota igual que lo hace la app real
+  // al registrar un pago (+30 días si es mensual, +7 si es semanal), y suma cada una en el mes
+  // que le corresponda. Si solo mirara la próxima fecha, un plan con 8 cuotas por delante
+  // aportaría una sola vez (al mes de esa próxima cuota) y desaparecería de los meses siguientes.
+  const proyeccion = meses.map(()=>0);
+  todosLosPlanesPendientes().forEach(({t})=>{
+    const restantes = (t.cuotas||0) - (t.cuotasPagadas||0);
+    if(restantes<=0 || !t.fechaPago || !(t.montoCuota>0)) return;
+    let fecha = new Date(t.fechaPago+'T00:00:00');
+    const esSemanal = (t.frecuencia||'mensual')==='semanal';
+    for(let k=0;k<restantes;k++){
+      const mesCuota = fecha.toISOString().slice(0,7);
+      const idx = meses.indexOf(mesCuota);
+      if(idx>=0) proyeccion[idx] += t.montoCuota;
+      fecha = new Date(fecha.getTime());
+      fecha.setDate(fecha.getDate() + (esSemanal?7:30));
+    }
+  });
 
   const W = 320, H = 150, padL = 8, padR = 8, padT = 26, padB = 20;
   const plotW = W-padL-padR, plotH = H-padT-padB;
