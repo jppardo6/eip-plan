@@ -374,6 +374,12 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
         <div id="scoreMeses"></div>
       </div>
       <div class="card">
+        <h3>Estimado a cobrar — próximos 5 meses</h3>
+        <div id="proyeccionCobranzaChart"></div>
+        <div id="proyeccionCobranzaLeyenda" style="margin-top:6px;"></div>
+        <div id="proyeccionCobranzaTabla" style="margin-top:10px;"></div>
+      </div>
+      <div class="card">
         <h3>Gastos por rubro — este mes</h3>
         <div class="muted" style="margin-bottom:8px;">Incluye lo condonado en incobrables y descuentos, como un rubro más</div>
         <div id="gastosPorRubroBarra" style="display:flex;height:14px;border-radius:8px;overflow:hidden;margin-bottom:12px;background:rgba(255,255,255,0.06);"></div>
@@ -3093,6 +3099,8 @@ function renderBalance(){
   });
   document.getElementById('scoreMeses').innerHTML = rows.join('');
 
+  renderProyeccionCobranza();
+
   // Gastos por rubro de este mes: incluye Personales/Empleado/Insumos/Combustible más lo
   // condonado en incobrables y descuentos, como un rubro más (no es plata que salió de la
   // caja, pero sí es un costo real del negocio este mes). Solo afecta esta vista de análisis,
@@ -3350,6 +3358,68 @@ function renderEstimacionCobranza(totalEsperadoEsteMes){
       const estimado = totalEsperadoEsteMes>0 ? fmtMoney(Math.round(totalEsperadoEsteMes * promedioPorSemana[i]/100)) : null;
       return `<div class="rubro-row"><span>${label}</span><span style="text-align:right;"><b>${pct}%</b>${estimado ? ` <span class="muted" style="font-size:12px;">≈ ${estimado}</span>` : ''}</span></div>`;
     }).join('');
+}
+// Gráfico de líneas: mes en curso + próximos 4, con dos series. "Según cartera agendada" suma,
+// para cada mes, el montoCuota de todos los planes pendientes cuya fecha de cobro cae en ese
+// mes — se recalcula sola cada vez que se carga una venta a crédito nueva o se reagenda/refinancia
+// algo, porque esas cuotas futuras entran a sumar en el mes que les corresponda. "Promedio
+// histórico" es una referencia plana con el promedio de lo realmente cobrado (cuotas + venta
+// rápida) en los últimos meses cerrados, para comparar la cartera comprometida contra el ritmo
+// real que vengo teniendo.
+function renderProyeccionCobranza(){
+  const hoy = new Date();
+  const meses = [];
+  for(let i=0;i<5;i++){
+    const d = new Date(hoy.getFullYear(), hoy.getMonth()+i, 1);
+    meses.push(d.toISOString().slice(0,7));
+  }
+  const mesActual = todayStr().slice(0,7);
+  const nombreMes = m => {
+    const d = new Date(Number(m.slice(0,4)), Number(m.slice(5,7))-1, 1);
+    return d.toLocaleDateString('es-AR',{month:'short'}).replace('.','');
+  };
+
+  const pendientes = todosLosPlanesPendientes();
+  const proyeccion = meses.map(m => pendientes
+    .filter(({t})=> (t.fechaPago||'').startsWith(m))
+    .reduce((s,{t})=> s + t.montoCuota, 0));
+
+  const mesesCerrados = [];
+  for(let i=4;i>=1;i--){
+    const d = new Date(); d.setDate(1); d.setMonth(d.getMonth()-i);
+    mesesCerrados.push(d.toISOString().slice(0,7));
+  }
+  const cobradoPorMesCerrado = mesesCerrados.map(m =>
+    state.payments.filter(p=>p.fecha.startsWith(m)).reduce((s,p)=>s+p.monto,0) +
+    state.sales.filter(s=>!s.clientId && s.fecha.startsWith(m)).reduce((s,x)=>s+x.monto,0)
+  );
+  const promedioHistorico = cobradoPorMesCerrado.length ? cobradoPorMesCerrado.reduce((a,b)=>a+b,0)/cobradoPorMesCerrado.length : 0;
+  const promedio = meses.map(()=> promedioHistorico);
+
+  const W = 320, H = 140, padL = 6, padR = 6, padT = 10, padB = 20;
+  const plotW = W-padL-padR, plotH = H-padT-padB;
+  const maxVal = Math.max(1, ...proyeccion, ...promedio) * 1.15;
+  const x = i => padL + (meses.length>1 ? plotW * i/(meses.length-1) : plotW/2);
+  const y = v => padT + plotH - (v/maxVal)*plotH;
+  const puntos = arr => arr.map((v,i)=>`${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  const circulos = (arr, color) => arr.map((v,i)=>`<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="3" fill="${color}"></circle>`).join('');
+
+  document.getElementById('proyeccionCobranzaChart').innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block;">
+      <polyline points="${puntos(promedio)}" fill="none" stroke="var(--ink-soft)" stroke-width="2" stroke-dasharray="4,3"></polyline>
+      <polyline points="${puntos(proyeccion)}" fill="none" stroke="var(--wood)" stroke-width="2.5"></polyline>
+      ${circulos(promedio, 'var(--ink-soft)')}
+      ${circulos(proyeccion, 'var(--wood)')}
+      ${meses.map((m,i)=>`<text x="${x(i).toFixed(1)}" y="${H-6}" font-size="9" fill="var(--ink-soft)" text-anchor="middle">${nombreMes(m)}</text>`).join('')}
+    </svg>`;
+
+  document.getElementById('proyeccionCobranzaLeyenda').innerHTML = `
+    <div class="rubro-row"><span><span class="dot" style="background:var(--wood)"></span>Según cartera ya agendada (se mueve con lo que vendas este mes)</span></div>
+    <div class="rubro-row"><span><span class="dot" style="background:var(--ink-soft)"></span>Promedio de los últimos ${cobradoPorMesCerrado.length} mes(es) cerrado(s): ${fmtMoney(promedioHistorico)}</span></div>`;
+
+  document.getElementById('proyeccionCobranzaTabla').innerHTML = meses.map((m,i)=>`
+    <div class="rubro-row"><span>${nombreMes(m)} ${m.slice(0,4)}${m===mesActual?' · en curso':''}</span><span style="text-align:right;"><b>${fmtMoney(proyeccion[i])}</b> <span class="muted" style="font-size:11px;">vs prom. ${fmtMoney(promedioHistorico)}</span></span></div>
+  `).join('');
 }
 // Recorre las cargas de Combustible que tengan kilometraje cargado, ordenadas por km, y calcula
 // cuánto se gastó por cada km recorrido entre una carga y la siguiente. Si el kilometraje da la
