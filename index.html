@@ -10,6 +10,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 const firebaseConfig = {
   apiKey: "AIzaSyD-MwXtheqLGN0reezeiC6LPeylAqrJY3U",
@@ -765,13 +766,13 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
       <h2>Cargar compra</h2>
       <div class="field"><label>Fecha</label><input type="date" id="cpFecha"></div>
       <div class="field"><label>Producto</label><input id="cpProducto" placeholder="Ej: Juego de comedor 6 sillas"></div>
-      <div class="field"><label>Costo del producto ($)</label><input type="number" id="cpCosto"></div>
+      <div class="field"><label>Costo del producto ($)</label><input type="number" id="cpCosto" oninput="actualizarFleteProveedor()"></div>
       <div class="field">
         <label style="display:flex;align-items:center;gap:8px;font-weight:600;color:var(--ink);">
-          <input type="checkbox" id="cpTieneFlete" onchange="document.getElementById('cpFleteField').style.display=this.checked?'block':'none'"> Tiene recargo de flete de terceros
+          <input type="checkbox" id="cpTieneFlete" onchange="actualizarFleteProveedor()"> Tiene recargo de flete de terceros (20% automático)
         </label>
       </div>
-      <div class="field" id="cpFleteField" style="display:none;"><label>Monto del flete ($)</label><input type="number" id="cpFlete"></div>
+      <div class="field" id="cpFleteField" style="display:none;"><label>Monto del flete ($) — 20% del costo</label><input type="number" id="cpFlete" readonly style="background:#f1f1f1;"></div>
       <button class="btn wood block" onclick="guardarCompraProveedor()">Guardar compra</button>
     </div>
   </div>
@@ -3552,6 +3553,11 @@ function renderProveedorDetailBody(){
   const totalServiciosMes = serviciosMes.reduce((s,x)=>s+x.monto,0);
   const diferencia = totalComprasMes - totalServiciosMes;
 
+  // Acumulado histórico de toda la cuenta (no solo el mes corriente)
+  const totalComprasAcum = compras.reduce((s,c)=>s+c.costo+(c.flete||0),0);
+  const totalServiciosAcum = servicios.reduce((s,x)=>s+x.monto,0);
+  const diferenciaAcum = totalComprasAcum - totalServiciosAcum;
+
   // Agrupa compras y servicios por mes (usando la fecha que se cargó, no la de hoy) para
   // poder revisar movimientos anteriores que se hayan cargado después, con el mes en curso
   // arriba de todo.
@@ -3570,13 +3576,17 @@ function renderProveedorDetailBody(){
     const filasDelMes = grupos[mes].map(e=>{
       const btnBorrar = `<button class="btn ghost" style="padding:4px 8px;font-size:11px;margin-left:8px;" onclick="eliminarMovimientoProveedor('${e._tipo}','${e.id}')">🗑️</button>`;
       if(e._tipo==='compra'){
-        const total = e.costo + (e.flete||0);
-        return `<div class="rubro-row"><span>${e.fecha} · ${e.producto}${e.flete?' (+flete '+fmtMoney(e.flete)+')':''}</span><span style="display:flex;align-items:center;"><b>${fmtMoney(total)}</b>${btnBorrar}</span></div>`;
+        const filaProducto = `<div class="rubro-row"><span>${e.fecha} · ${e.producto}</span><span style="display:flex;align-items:center;"><b>${fmtMoney(e.costo)}</b>${btnBorrar}</span></div>`;
+        const filaFlete = e.flete ? `<div class="rubro-row"><span style="padding-left:14px;color:var(--ink-soft);">↳ Flete ${e.producto}</span><span style="display:flex;align-items:center;"><b>${fmtMoney(e.flete)}</b></span></div>` : '';
+        return filaProducto + filaFlete;
       }
       return `<div class="rubro-row"><span>${e.fecha} · ${e.descripcion}</span><span style="display:flex;align-items:center;"><b style="color:var(--green)">-${fmtMoney(e.monto)}</b>${btnBorrar}</span></div>`;
     }).join('');
     return `<div style="margin-bottom:14px;">
-      <div style="font-weight:700;margin-bottom:2px;text-transform:capitalize;">${labelMes}${mes===mesActual?' · en curso':''}</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">
+        <div style="font-weight:700;text-transform:capitalize;">${labelMes}${mes===mesActual?' · en curso':''}</div>
+        <button class="btn ghost" style="padding:4px 10px;font-size:12px;" onclick="generarPDFProveedorMes('${mes}')">📄 PDF</button>
+      </div>
       <div class="muted" style="margin-bottom:6px;font-size:12px;">Comprado ${fmtMoney(comprasDelMes)} · Servicios ${fmtMoney(serviciosDelMes)}</div>
       ${filasDelMes}
     </div>`;
@@ -3584,9 +3594,14 @@ function renderProveedorDetailBody(){
 
   document.getElementById('provDetailBody').innerHTML = `
     <div class="card">
+      <div class="muted">Acumulado de toda la cuenta</div>
+      <div style="font-weight:800;font-size:22px;margin-bottom:6px;color:${diferenciaAcum>0?'var(--red)':'var(--green)'}">${diferenciaAcum>0?'Debo '+fmtMoney(diferenciaAcum):(diferenciaAcum<0?'A mi favor '+fmtMoney(-diferenciaAcum):'Al día')}</div>
+      <div class="muted" style="font-size:12px;">Comprado histórico ${fmtMoney(totalComprasAcum)} · Servicios histórico ${fmtMoney(totalServiciosAcum)}</div>
+    </div>
+    <div class="card">
       <div class="muted">Este mes — comprado</div><div style="font-weight:800;font-size:18px;margin-bottom:6px;">${fmtMoney(totalComprasMes)}</div>
       <div class="muted">Este mes — servicios prestados</div><div style="font-weight:800;font-size:18px;margin-bottom:6px;">${fmtMoney(totalServiciosMes)}</div>
-      <div class="muted">Diferencia</div>
+      <div class="muted">Diferencia del mes</div>
       <div style="font-weight:800;font-size:20px;color:${diferencia>0?'var(--red)':'var(--green)'}">${diferencia>0?'Debo '+fmtMoney(diferencia):(diferencia<0?'A mi favor '+fmtMoney(-diferencia):'Al día')}</div>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:14px;">
@@ -3595,6 +3610,55 @@ function renderProveedorDetailBody(){
     </div>
     <div class="card"><h3>Movimientos por mes</h3>${filas || '<div class="muted">Sin movimientos todavía.</div>'}</div>
   `;
+}
+function generarPDFProveedorMes(mes){
+  const p = state.proveedores.find(x=>x.id===activeProveedorId);
+  if(!p || !window.jspdf){ toast('No se pudo generar el PDF'); return; }
+  const compras = state.comprasProveedor.filter(c=>c.proveedorId===p.id && c.fecha.slice(0,7)===mes);
+  const servicios = state.serviciosProveedor.filter(s=>s.proveedorId===p.id && s.fecha.slice(0,7)===mes);
+  const eventos = [
+    ...compras.map(c=>({...c, _tipo:'compra'})),
+    ...servicios.map(s=>({...s, _tipo:'servicio'}))
+  ].sort((a,b)=> a.fecha.localeCompare(b.fecha));
+  const totalCompras = compras.reduce((s,c)=>s+c.costo+(c.flete||0),0);
+  const totalServicios = servicios.reduce((s,x)=>s+x.monto,0);
+  const diferencia = totalCompras - totalServicios;
+  const labelMes = new Date(mes+'-02T00:00:00').toLocaleDateString('es-AR',{month:'long', year:'numeric'});
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  let y = 18;
+  doc.setFontSize(14); doc.text(`Proveedor: ${p.nombre}`, 14, y); y+=8;
+  doc.setFontSize(12); doc.text(`Mes: ${labelMes}`, 14, y); y+=10;
+  doc.setDrawColor(200); doc.line(14, y, 196, y); y+=8;
+
+  doc.setFontSize(10);
+  if(!eventos.length){
+    doc.text('Sin movimientos este mes.', 14, y); y+=8;
+  }
+  eventos.forEach(e=>{
+    if(y>275){ doc.addPage(); y=18; }
+    if(e._tipo==='compra'){
+      doc.text(`${e.fecha}  ${e.producto}`, 14, y); doc.text(fmtMoney(e.costo), 196, y, {align:'right'}); y+=6;
+      if(e.flete){
+        if(y>275){ doc.addPage(); y=18; }
+        doc.setTextColor(120); doc.text(`     Flete ${e.producto}`, 14, y); doc.text(fmtMoney(e.flete), 196, y, {align:'right'}); doc.setTextColor(0); y+=6;
+      }
+    } else {
+      doc.text(`${e.fecha}  ${e.descripcion}`, 14, y); doc.text('-'+fmtMoney(e.monto), 196, y, {align:'right'}); y+=6;
+    }
+  });
+
+  if(y>265){ doc.addPage(); y=18; }
+  y+=6; doc.setDrawColor(200); doc.line(14, y, 196, y); y+=8;
+  doc.setFontSize(11);
+  doc.text(`Total comprado:`, 14, y); doc.text(fmtMoney(totalCompras), 196, y, {align:'right'}); y+=7;
+  doc.text(`Total servicios:`, 14, y); doc.text(fmtMoney(totalServicios), 196, y, {align:'right'}); y+=9;
+  doc.setFontSize(13);
+  const resumen = diferencia>0 ? `Debo: ${fmtMoney(diferencia)}` : (diferencia<0 ? `A mi favor: ${fmtMoney(-diferencia)}` : 'Al día');
+  doc.text(resumen, 14, y);
+
+  doc.save(`${p.nombre.replace(/[^a-z0-9]+/gi,'_')}_${mes}.pdf`);
 }
 function eliminarMovimientoProveedor(tipo, id){
   if(!confirm('¿Borrar este movimiento?')) return;
@@ -3612,12 +3676,22 @@ function abrirCompraProveedor(){
   document.getElementById('cpFleteField').style.display='none';
   openOverlay('ov-compra-proveedor');
 }
+function actualizarFleteProveedor(){
+  const tieneFlete = document.getElementById('cpTieneFlete').checked;
+  document.getElementById('cpFleteField').style.display = tieneFlete ? 'block' : 'none';
+  if(tieneFlete){
+    const costo = Number(document.getElementById('cpCosto').value||0);
+    document.getElementById('cpFlete').value = (costo*0.2).toFixed(2);
+  } else {
+    document.getElementById('cpFlete').value = '';
+  }
+}
 function guardarCompraProveedor(){
   const fecha = document.getElementById('cpFecha').value || todayStr();
   const producto = document.getElementById('cpProducto').value.trim();
   const costo = Number(document.getElementById('cpCosto').value||0);
   const tieneFlete = document.getElementById('cpTieneFlete').checked;
-  const flete = tieneFlete ? Number(document.getElementById('cpFlete').value||0) : 0;
+  const flete = tieneFlete ? Number((costo*0.2).toFixed(2)) : 0;
   if(!producto || !costo){ toast('Completá producto y costo'); return; }
   state.comprasProveedor.push({id:uid(), proveedorId:activeProveedorId, producto, costo, flete, fecha});
   saveState(); closeOverlay('ov-compra-proveedor');
