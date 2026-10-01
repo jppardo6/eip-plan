@@ -3190,34 +3190,34 @@ function renderSaldoCaja(){
 // Lo que se debe a proveedores este mes (se compensa mensualmente, como ya funciona la cuenta
 // corriente de cada proveedor en "Más"): suma solo los saldos a favor del proveedor (lo que
 // falta pagarles), no lo que ellos te deben a vos.
-function calcularPasivoProveedores(){
-  // Pasivo real: el acumulado de TODA la cuenta con cada proveedor, no solo lo del mes
-  // corriente (una compra de un mes anterior sin saldar sigue siendo deuda hoy).
+function calcularSaldoProveedores(){
+  // Saldo neto real con TODOS los proveedores, acumulado de toda la cuenta (no solo el mes
+  // corriente). Positivo = les debo (pasivo), negativo = me deben a mí/estoy a favor (activo).
   let total = 0;
   state.proveedores.forEach(p=>{
     const compras = state.comprasProveedor.filter(c=>c.proveedorId===p.id);
     const servicios = state.serviciosProveedor.filter(s=>s.proveedorId===p.id);
     const totalCompras = compras.reduce((s,c)=>s+c.costo+(c.flete||0),0);
     const totalServicios = servicios.reduce((s,x)=>s+x.monto,0);
-    const diferencia = totalCompras - totalServicios;
-    if(diferencia>0) total += diferencia;
+    total += (totalCompras - totalServicios);
   });
   return total;
 }
 // Foto general del negocio, como activos contra pasivos de cualquier balance: lo que tenés en
-// mano/cuenta más lo que te deben los clientes (activos), contra lo que le debés a proveedores
-// (pasivos). La diferencia es el patrimonio neto de ese momento.
+// mano/cuenta más lo que te deben los clientes (activos), contra el saldo neto con proveedores
+// (que puede ser pasivo si les debo, o activo si estoy a favor). La diferencia es el patrimonio
+// neto de ese momento.
 function renderEstadoGeneral(balanceTotal){
   const saldo = renderSaldoCaja();
   const cajaTotal = saldo ? (saldo.efectivo + saldo.transferencia) : 0;
-  const pasivoProveedores = calcularPasivoProveedores();
+  const saldoProveedores = calcularSaldoProveedores();
   const activos = cajaTotal + balanceTotal;
-  const patrimonio = activos - pasivoProveedores;
+  const patrimonio = activos - saldoProveedores;
   document.getElementById('estadoGeneralBox').innerHTML = `
     <div class="rubro-row"><span>Efectivo + transferencia</span><b>${fmtMoney(cajaTotal)}</b></div>
     <div class="rubro-row"><span>Por cobrar a clientes</span><b>${fmtMoney(balanceTotal)}</b></div>
     <div class="rubro-row" style="border-top:1px solid var(--line);padding-top:6px;"><span>Total activos</span><b>${fmtMoney(activos)}</b></div>
-    <div class="rubro-row" style="margin-top:8px;"><span>Por pagar a proveedores</span><b style="color:var(--red)">${fmtMoney(pasivoProveedores)}</b></div>
+    <div class="rubro-row" style="margin-top:8px;"><span>Estado proveedores</span><b style="color:${saldoProveedores>0?'var(--red)':(saldoProveedores<0?'var(--green)':'var(--ink)')}">${saldoProveedores>0?'Debo '+fmtMoney(saldoProveedores):(saldoProveedores<0?'A favor '+fmtMoney(-saldoProveedores):'Al día')}</b></div>
     <div class="rubro-row" style="border-top:1px solid var(--line);padding-top:6px;margin-top:4px;"><span><b>Patrimonio (activos − pasivos)</b></span><b style="font-size:18px;">${fmtMoney(patrimonio)}</b></div>
     ${saldo ? '' : `<div class="muted" style="margin-top:8px;font-size:11px;">El efectivo/transferencia no está sumando todavía — cargá el saldo inicial en "Más".</div>`}
   `;
