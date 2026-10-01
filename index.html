@@ -3191,11 +3191,12 @@ function renderSaldoCaja(){
 // corriente de cada proveedor en "Más"): suma solo los saldos a favor del proveedor (lo que
 // falta pagarles), no lo que ellos te deben a vos.
 function calcularPasivoProveedores(){
-  const mesActual = todayStr().slice(0,7);
+  // Pasivo real: el acumulado de TODA la cuenta con cada proveedor, no solo lo del mes
+  // corriente (una compra de un mes anterior sin saldar sigue siendo deuda hoy).
   let total = 0;
   state.proveedores.forEach(p=>{
-    const compras = state.comprasProveedor.filter(c=>c.proveedorId===p.id && c.fecha.startsWith(mesActual));
-    const servicios = state.serviciosProveedor.filter(s=>s.proveedorId===p.id && s.fecha.startsWith(mesActual));
+    const compras = state.comprasProveedor.filter(c=>c.proveedorId===p.id);
+    const servicios = state.serviciosProveedor.filter(s=>s.proveedorId===p.id);
     const totalCompras = compras.reduce((s,c)=>s+c.costo+(c.flete||0),0);
     const totalServicios = servicios.reduce((s,x)=>s+x.monto,0);
     const diferencia = totalCompras - totalServicios;
