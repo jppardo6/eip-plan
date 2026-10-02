@@ -393,7 +393,7 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
       </div>
       <div class="card">
         <h3>Costo por kilómetro</h3>
-        <div class="muted" style="margin-bottom:8px;">Se actualiza solo con lo gastado en combustible y los km recorridos entre cargas (según el kilometraje que cargás en cada gasto de Combustible)</div>
+        <div class="muted" style="margin-bottom:8px;">Se actualiza solo con lo gastado en combustible y los km recorridos entre cargas. Si además cargás la autonomía restante antes de cada carga, el cálculo se afina (no hace falta llenar siempre el tanque a full para que sea preciso)</div>
         <div style="font-size:24px;font-weight:800;" id="costoPorKm">—</div>
         <div class="muted" id="costoPorKmDetalle" style="margin-top:4px;font-size:12px;"></div>
       </div>
@@ -624,16 +624,17 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
       </div>
       <div class="field" id="gastoSubcatField" style="display:none;">
         <label>Subcategoría</label>
-        <select id="gastoSubcategoria" onchange="manejarSubcategoriaSelect()">
-          <option value="__nueva__">+ Crear nueva subcategoría</option>
-        </select>
+        <div style="display:flex;gap:8px;">
+          <select id="gastoSubcategoria" style="flex:1;"></select>
+          <button type="button" class="btn ghost" style="padding:0 16px;" onclick="agregarSubcategoria()">+ Nueva</button>
+        </div>
       </div>
       <div class="field"><label>Monto ($)</label><input id="gastoMonto" type="number"></div>
       <div class="field"><label>Pagado en</label>
         <select id="gastoMetodo"><option value="efectivo">Efectivo</option><option value="transferencia">Transferencia</option></select>
       </div>
-      <div class="field" id="gastoLitrosField" style="display:none;"><label>Litros (opcional)</label><input id="gastoLitros" type="number" placeholder="Ej: 20"></div>
-      <div class="field" id="gastoKmField" style="display:none;"><label>Últimos 4 números del kilometraje (opcional)</label><input id="gastoKm" type="number" maxlength="4" placeholder="Ej: 5230"></div>
+      <div class="field" id="gastoKmField" style="display:none;"><label>Últimos 5 números del kilometraje (opcional)</label><input id="gastoKm" type="number" maxlength="5" placeholder="Ej: 85230"></div>
+      <div class="field" id="gastoAutonomiaField" style="display:none;"><label>Autonomía restante antes de cargar (km, opcional)</label><input id="gastoAutonomia" type="number" placeholder="Ej: 45"></div>
       <div class="field"><label>Nota (opcional)</label><input id="gastoNota" placeholder="Ej: Lija y barniz"></div>
       <button class="btn wood block" onclick="guardarGasto()">Guardar gasto</button>
     </div>
@@ -1366,6 +1367,29 @@ function saveClient(){
   clearClientForm();
   renderClientes();
   renderAll();
+  enviarBienvenidaWA(client);
+}
+// Mensaje de bienvenida que se abre solo (listo para enviar, el dueño confirma con el botón
+// de WhatsApp) apenas se guarda un cliente nuevo con teléfono cargado. Explica cómo queda la
+// financiación para que quede claro desde el primer día.
+function enviarBienvenidaWA(client){
+  if(!client.tel){ return; }
+  let msg;
+  if(client.type==='muebles'){
+    msg = `¡Hola ${client.nombre}! 🌲 Bienvenido/a a EIP Plan, esperamos que disfrutes tu ${client.producto||'nuevo mueble'}.\n\n`
+      + `Así queda tu financiación:\n`
+      + `• ${client.cuotas} cuotas de ${fmtMoney(client.montoCuota)} (${client.frecuencia==='semanal'?'semanales':'mensuales'})\n`
+      + `• Primer vencimiento: ${client.fechaPago}\n\n`
+      + `¡Gracias por confiar en nosotros! Cualquier duda o consulta, escribinos por acá cuando quieras.`;
+  } else {
+    msg = `¡Hola ${client.nombre}! 🎨 Bienvenido/a a EIP Plan, esperamos que disfrutes el resultado de tu trabajo.\n\n`
+      + (client.descripcion ? `Trabajo: ${client.descripcion}\n` : '')
+      + (client.monto ? `Presupuesto acordado: ${fmtMoney(client.monto)}\n` : '')
+      + (client.fechaEntrega ? `Entrega estimada: ${client.fechaEntrega}\n` : '')
+      + `\n¡Gracias por confiar en nosotros! Cualquier duda o consulta, escribinos por acá cuando quieras.`;
+  }
+  const wa = 'https://wa.me/' + client.tel.replace(/\D/g,'') + '?text=' + encodeURIComponent(msg);
+  window.open(wa, '_blank');
 }
 function clearClientForm(){
   ['cNombre','cDni','cTel','cProducto','cMontoCuota','cCuotas','cFechaPago','cTelP','pDesc','pMonto','pFecha','cTelF','cLocManual']
@@ -2728,11 +2752,11 @@ function onDragEndAgenda(){
 }
 
 /* ---------- Gastos / Combustible ---------- */
-function openExpense(){ editingGastoId = null; document.getElementById('gastoMonto').value=''; document.getElementById('gastoMetodo').value='efectivo'; document.getElementById('gastoNota').value=''; document.getElementById('gastoLitros').value=''; document.getElementById('gastoKm').value=''; actualizarCamposGasto(); openOverlay('ov-gasto'); }
+function openExpense(){ editingGastoId = null; document.getElementById('gastoMonto').value=''; document.getElementById('gastoMetodo').value='efectivo'; document.getElementById('gastoNota').value=''; document.getElementById('gastoKm').value=''; document.getElementById('gastoAutonomia').value=''; actualizarCamposGasto(); openOverlay('ov-gasto'); }
 function actualizarCamposGasto(){
   const rubro = document.getElementById('gastoRubro').value;
-  document.getElementById('gastoLitrosField').style.display = rubro==='Combustible' ? 'block' : 'none';
   document.getElementById('gastoKmField').style.display = rubro==='Combustible' ? 'block' : 'none';
+  document.getElementById('gastoAutonomiaField').style.display = rubro==='Combustible' ? 'block' : 'none';
   document.getElementById('gastoSubcatField').style.display = 'block';
   renderOpcionesSubcategoria();
 }
@@ -2741,26 +2765,26 @@ function renderOpcionesSubcategoria(){
   const lista = (state.subcategoriasGastos && state.subcategoriasGastos[rubro]) || [];
   const sel = document.getElementById('gastoSubcategoria');
   const actual = sel.value;
-  sel.innerHTML = lista.map(s=>`<option value="${s}">${s}</option>`).join('') + `<option value="__nueva__">+ Crear nueva subcategoría</option>`;
-  if(lista.includes(actual)) sel.value = actual;
+  sel.innerHTML = `<option value="">(Sin subcategoría)</option>` + lista.map(s=>`<option value="${s}">${s}</option>`).join('');
+  sel.value = lista.includes(actual) ? actual : '';
 }
 function toggleLitrosField(){ actualizarCamposGasto(); }
-function manejarSubcategoriaSelect(){
+// Botón aparte (en vez de depender del onchange del select) porque cuando un rubro todavía no
+// tiene ninguna subcategoría cargada, "+ Crear nueva" quedaba como única opción ya seleccionada
+// de entrada, y el navegador no dispara el evento "change" si tocás la opción que ya estaba
+// seleccionada — por eso no pasaba nada al presionarla.
+function agregarSubcategoria(){
   const rubro = document.getElementById('gastoRubro').value;
-  const sel = document.getElementById('gastoSubcategoria');
-  if(sel.value==='__nueva__'){
-    const nueva = prompt('Nombre de la nueva subcategoría:');
-    if(!state.subcategoriasGastos) state.subcategoriasGastos = {Personales:[],Empleado:[],Insumos:[],Combustible:[]};
-    const lista = state.subcategoriasGastos[rubro] = state.subcategoriasGastos[rubro] || [];
-    if(nueva && nueva.trim()){
-      lista.push(nueva.trim());
-      saveState();
-      renderOpcionesSubcategoria();
-      sel.value = nueva.trim();
-    } else {
-      sel.value = lista[0] || '__nueva__';
-    }
+  const nueva = prompt('Nombre de la nueva subcategoría:');
+  if(!nueva || !nueva.trim()) return;
+  if(!state.subcategoriasGastos) state.subcategoriasGastos = {Personales:[],Empleado:[],Insumos:[],Combustible:[],Ajuste:[]};
+  const lista = state.subcategoriasGastos[rubro] = state.subcategoriasGastos[rubro] || [];
+  if(!lista.includes(nueva.trim())){
+    lista.push(nueva.trim());
+    saveState();
   }
+  renderOpcionesSubcategoria();
+  document.getElementById('gastoSubcategoria').value = nueva.trim();
 }
 let editingGastoId = null;
 function editarGasto(id){
@@ -2773,6 +2797,7 @@ function editarGasto(id){
   document.getElementById('gastoMetodo').value = g.metodo || 'efectivo';
   document.getElementById('gastoNota').value = g.nota || '';
   document.getElementById('gastoKm').value = (g.km!==undefined && g.km!==null) ? g.km : '';
+  document.getElementById('gastoAutonomia').value = (g.autonomiaRestante!==undefined && g.autonomiaRestante!==null) ? g.autonomiaRestante : '';
   if(g.subcategoria){
     document.getElementById('gastoSubcategoria').value = g.subcategoria;
   }
@@ -2782,25 +2807,24 @@ function guardarGasto(){
   const rubro = document.getElementById('gastoRubro').value;
   const monto = Number(document.getElementById('gastoMonto').value||0);
   const metodo = document.getElementById('gastoMetodo').value;
-  const litros = Number(document.getElementById('gastoLitros').value||0);
   const kmInput = document.getElementById('gastoKm').value;
   const km = (rubro==='Combustible' && kmInput!=='') ? Number(kmInput) : null;
+  const autonomiaInput = document.getElementById('gastoAutonomia').value;
+  const autonomiaRestante = (rubro==='Combustible' && autonomiaInput!=='') ? Number(autonomiaInput) : null;
   let subcategoria = document.getElementById('gastoSubcategoria').value;
-  if(subcategoria==='__nueva__') subcategoria = '';
   let nota = document.getElementById('gastoNota').value;
   if(!monto){ toast('Ingresá un monto'); return; }
-  if(rubro==='Combustible' && litros){ nota = (nota ? nota+' · ' : '') + litros+' litros'; }
   if(editingGastoId){
     const g = state.expenses.find(x=>x.id===editingGastoId);
-    if(g){ g.rubro=rubro; g.subcategoria=subcategoria; g.monto=monto; g.metodo=metodo; g.nota=nota; g.km=km; }
+    if(g){ g.rubro=rubro; g.subcategoria=subcategoria; g.monto=monto; g.metodo=metodo; g.nota=nota; g.km=km; g.autonomiaRestante=autonomiaRestante; }
     editingGastoId = null;
     toast('Gasto actualizado');
   } else {
-    state.expenses.push({id:uid(), rubro, subcategoria, monto, metodo, nota, km, fecha:todayStr()});
+    state.expenses.push({id:uid(), rubro, subcategoria, monto, metodo, nota, km, autonomiaRestante, fecha:todayStr()});
     toast('Gasto guardado');
   }
   saveState(); closeOverlay('ov-gasto');
-  document.getElementById('gastoMonto').value=''; document.getElementById('gastoNota').value=''; document.getElementById('gastoLitros').value='';
+  document.getElementById('gastoMonto').value=''; document.getElementById('gastoNota').value='';
   renderCaja();
   if(document.getElementById('ov-detalle-caja').classList.contains('show')) renderDetalleCaja();
 }
@@ -3265,11 +3289,11 @@ function renderRitmoCobranza(){
     if(idx>=0) pendientePorSemana[idx] += t.montoCuota;
   });
 
+  // Solo pagos de cuotas de clientes (state.payments) cuentan como "cobrado" acá — las ventas
+  // rápidas y los fletes (ventas sin clientId) suman a la caja, pero no tienen una cuota
+  // "esperada" agendada que las respalde, así que mezclarlas inflaba el % de cobranza sin razón.
   const cobradoPorSemana = semanas.map(()=>0);
-  const movimientosMes = [
-    ...state.payments.filter(p=>p.fecha.startsWith(mesActual)).map(p=>({fecha:p.fecha, monto:p.monto})),
-    ...state.sales.filter(s=>!s.clientId && s.fecha.startsWith(mesActual)).map(s=>({fecha:s.fecha, monto:s.monto})),
-  ];
+  const movimientosMes = state.payments.filter(p=>p.fecha.startsWith(mesActual)).map(p=>({fecha:p.fecha, monto:p.monto}));
   movimientosMes.forEach(m=>{
     const idx = diaDeSemana(Number(m.fecha.slice(8,10)));
     if(idx>=0) cobradoPorSemana[idx] += m.monto;
@@ -3331,10 +3355,9 @@ function renderEstimacionCobranza(totalEsperadoEsteMes){
   mesesHistoricos.forEach(mes=>{
     const semanas = semanasDe(mes);
     const totales = semanas.map(()=>0);
-    const movimientos = [
-      ...state.payments.filter(p=>p.fecha.startsWith(mes)).map(p=>({fecha:p.fecha, monto:p.monto})),
-      ...state.sales.filter(s=>!s.clientId && s.fecha.startsWith(mes)).map(s=>({fecha:s.fecha, monto:s.monto})),
-    ];
+    // Mismo criterio que el ritmo del mes en curso: solo pagos de cuotas de clientes, sin
+    // ventas rápidas ni fletes, para que el promedio histórico mida lo mismo que se compara.
+    const movimientos = state.payments.filter(p=>p.fecha.startsWith(mes)).map(p=>({fecha:p.fecha, monto:p.monto}));
     movimientos.forEach(m=>{
       const dia = Number(m.fecha.slice(8,10));
       const idx = semanas.findIndex(s=>dia>=s.desde && dia<=s.hasta);
@@ -3448,26 +3471,43 @@ function mostrarProyTooltip(i){
   document.querySelectorAll('[id^="proyTooltip"]').forEach(x=> x.style.display='none');
   if(el && !yaVisible) el.style.display = 'block';
 }
-// Recorre las cargas de Combustible que tengan kilometraje cargado, ordenadas por km, y calcula
+// Recorre las cargas de Combustible que tengan kilometraje cargado, ordenadas por fecha, y calcula
 // cuánto se gastó por cada km recorrido entre una carga y la siguiente. Si el kilometraje da la
-// vuelta (pasa de 9999 a 0000 porque solo se cargan los últimos 4 dígitos), se asume que dio una
+// vuelta (pasa de 99999 a 00000 porque solo se cargan los últimos 5 dígitos), se asume que dio una
 // sola vuelta completa. Se actualiza solo, cada vez que se carga un gasto de Combustible con km.
+//
+// Cuando además se cargó la "autonomía restante antes de cargar" en AMBOS extremos de un tramo,
+// el cálculo de ese tramo se afina: en vez de asumir que siempre se llena el tanque a full (lo
+// que hace que un monto cargado no coincida con el km realmente recorrido si la carga fue
+// parcial), se usa el monto de la carga ANTERIOR al tramo, ajustado por cuánta autonomía sin
+// usar quedó de más o de menos entre el inicio y el fin del tramo. Si falta ese dato en algún
+// extremo, ese tramo cae de nuevo al método simple (monto de la carga siguiente vs. km recorrido).
 function renderCostoPorKm(){
   const cargas = state.expenses
     .filter(e=>e.rubro==='Combustible' && e.km!==undefined && e.km!==null && e.km!=='')
-    .map(e=>({fecha:e.fecha, monto:e.monto, km:Number(e.km)}))
+    .map(e=>({fecha:e.fecha, monto:e.monto, km:Number(e.km), autonomia:(e.autonomiaRestante!==undefined && e.autonomiaRestante!==null && e.autonomiaRestante!=='') ? Number(e.autonomiaRestante) : null}))
     .sort((a,b)=> a.fecha===b.fecha ? 0 : a.fecha.localeCompare(b.fecha));
   if(cargas.length<2){
     document.getElementById('costoPorKm').textContent = '—';
     document.getElementById('costoPorKmDetalle').textContent = 'Cargá el kilometraje en al menos 2 cargas de combustible para que se calcule solo.';
     return;
   }
-  let kmTotales = 0, gastoTotal = 0;
+  let kmTotales = 0, gastoTotal = 0, tramosConAutonomia = 0;
   for(let i=1;i<cargas.length;i++){
     let delta = cargas[i].km - cargas[i-1].km;
-    if(delta<0) delta += 10000; // dio la vuelta en los últimos 4 dígitos
+    if(delta<0) delta += 100000; // dio la vuelta en los últimos 5 dígitos
+    const previa = cargas[i-1], actual = cargas[i];
+    if(previa.autonomia!==null && actual.autonomia!==null){
+      const efectivo = delta + (actual.autonomia - previa.autonomia);
+      if(efectivo>0){
+        kmTotales += efectivo;
+        gastoTotal += previa.monto;
+        tramosConAutonomia++;
+        continue;
+      }
+    }
     kmTotales += delta;
-    gastoTotal += cargas[i].monto;
+    gastoTotal += actual.monto;
   }
   if(kmTotales<=0){
     document.getElementById('costoPorKm').textContent = '—';
@@ -3475,7 +3515,8 @@ function renderCostoPorKm(){
     return;
   }
   document.getElementById('costoPorKm').textContent = fmtMoney(gastoTotal/kmTotales) + ' / km';
-  document.getElementById('costoPorKmDetalle').textContent = `Con las últimas ${cargas.length} cargas de combustible con kilometraje cargado · ${kmTotales} km recorridos · ${fmtMoney(gastoTotal)} gastados en ese tramo.`;
+  const notaAutonomia = tramosConAutonomia>0 ? ` · ${tramosConAutonomia} tramo(s) afinado(s) con autonomía restante` : '';
+  document.getElementById('costoPorKmDetalle').textContent = `Con las últimas ${cargas.length} cargas de combustible con kilometraje cargado · ${kmTotales} km recorridos · ${fmtMoney(gastoTotal)} gastados en ese tramo${notaAutonomia}.`;
 }
 function renderMas(){
   document.getElementById('metaInput').value = state.metaMes || '';
