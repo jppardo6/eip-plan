@@ -680,6 +680,21 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
   </div>
 </div>
 
+<!-- MODAL: cómo se cobró el flete -->
+<div class="overlay" id="ov-flete-cobro">
+  <div class="sheet">
+    <div class="sheet-wrap">
+      <button class="close-x" onclick="cancelarCobroFlete()">✕</button>
+      <h2>Cobro de flete</h2>
+      <div class="muted" id="fleteCobroInfo" style="margin-bottom:12px;"></div>
+      <div class="field"><label>¿Cómo lo cobraste?</label>
+        <select id="fleteCobroMetodo"><option value="efectivo">Efectivo</option><option value="transferencia">Transferencia</option></select>
+      </div>
+      <button class="btn wood block" onclick="confirmarCobroFlete()">Confirmar cobro</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: menú de agregar en agenda -->
 <div class="overlay" id="ov-agenda-menu">
   <div class="sheet">
@@ -2477,8 +2492,11 @@ function addFleteRapido(){
 }
 function deleteVisit(id){
   if(!confirm('¿Borrar esta visita/flete de la agenda?')) return;
+  // Si el flete ya se había marcado como cobrado, borrar solo la visita dejaba la venta
+  // generada pegada en la caja para siempre — ahora se borra junto con la visita.
+  state.sales = state.sales.filter(s=> s.visitId!==id);
   state.visits = state.visits.filter(x=>x.id!==id);
-  saveState(); renderAgenda();
+  saveState(); renderAgenda(); renderCaja();
 }
 let reagendarItemId = null, reagendarItemTipo = null;
 function openReagendarItem(id, tipo){
@@ -2532,19 +2550,48 @@ function moveTask(id, dir){
   [state.tasks[iA], state.tasks[iB]] = [state.tasks[iB], state.tasks[iA]];
   saveState(); renderAgenda();
 }
+// Fletes con costo preguntan efectivo/transferencia antes de sumarse a la caja (antes quedaban
+// siempre como "efectivo" sin preguntar). La venta que genera el cobro queda linkeada al id de
+// la visita (visitId) para poder deshacerla sola si se destilda el flete o se borra de la
+// agenda — antes, una vez cobrado, el monto quedaba pegado en la caja para siempre aunque
+// después se destildara o se borrara el flete de la agenda.
+let pendingFleteCobroId = null;
 function toggleVisit(id){
   const v = state.visits.find(x=>x.id===id);
-  v.done = !v.done;
+  if(!v) return;
   if(v.tipo==='flete'){
-    if(v.done && !v.registrado && v.monto>0){
-      state.sales.push({id:uid(), monto:v.monto, fecha:v.fecha||todayStr(), nota:'Flete: '+(v.ref||'')});
-      v.registrado = true;
-      toast('Cobro de flete sumado a la caja');
-    } else if(v.done && v.monto===0){
-      v.registrado = true;
+    if(!v.done){
+      if(v.monto>0){
+        pendingFleteCobroId = id;
+        document.getElementById('fleteCobroInfo').textContent = `${v.ref||'Flete'} · ${fmtMoney(v.monto)}`;
+        document.getElementById('fleteCobroMetodo').value = 'efectivo';
+        openOverlay('ov-flete-cobro');
+        return;
+      }
+      v.done = true; v.registrado = true;
+    } else {
+      v.done = false;
+      if(v.registrado){
+        state.sales = state.sales.filter(s=> s.visitId!==v.id);
+        v.registrado = false;
+      }
     }
+    saveState(); renderAgenda(); renderCaja();
+    return;
   }
-  saveState(); renderAgenda(); renderCaja();
+  v.done = !v.done;
+  saveState(); renderAgenda();
+}
+function cancelarCobroFlete(){ pendingFleteCobroId = null; closeOverlay('ov-flete-cobro'); }
+function confirmarCobroFlete(){
+  const v = state.visits.find(x=>x.id===pendingFleteCobroId);
+  if(!v){ closeOverlay('ov-flete-cobro'); return; }
+  const metodo = document.getElementById('fleteCobroMetodo').value;
+  state.sales.push({id:uid(), monto:v.monto, metodo, fecha:v.fecha||todayStr(), nota:'Flete: '+(v.ref||''), visitId:v.id});
+  v.done = true; v.registrado = true;
+  pendingFleteCobroId = null;
+  saveState(); closeOverlay('ov-flete-cobro'); renderAgenda(); renderCaja();
+  toast('Cobro de flete sumado a la caja');
 }
 function setAgendaDate(d){
   selectedAgendaDate = d || todayStr();
@@ -2837,9 +2884,9 @@ function calcularVendido(desde, hasta){
 }
 function calcularCobrado(desde, hasta){
   const pagos = state.payments.filter(p=>p.fecha>=desde && p.fecha<=hasta)
-    .map(p=>({fecha:p.fecha, nombre:(state.clients.find(c=>c.id===p.clientId)||{}).nombre||'Cliente', monto:p.monto}));
+    .map(p=>({id:p.id, tipo:'pago', fecha:p.fecha, nombre:(state.clients.find(c=>c.id===p.clientId)||{}).nombre||'Cliente', monto:p.monto}));
   const ventasCash = state.sales.filter(s=> !s.clientId && s.fecha>=desde && s.fecha<=hasta)
-    .map(s=>({fecha:s.fecha, nombre:s.nota||'Venta', monto:s.monto}));
+    .map(s=>({id:s.id, tipo:'venta', fecha:s.fecha, nombre:s.nota||'Venta', monto:s.monto}));
   return [...pagos, ...ventasCash];
 }
 function calcularGastos(desde, hasta){
@@ -2885,9 +2932,17 @@ function renderDetalleCaja(){
   const esClientes = detalleCajaTipo==='altas' || detalleCajaTipo==='bajas';
   document.getElementById('detalleCajaTotal').textContent = esClientes ? items.length+' cliente(s)' : fmtMoney(items.reduce((s,x)=>s+x.monto,0));
   document.getElementById('detalleCajaLista').innerHTML = items.length ? items.map(it=>{
-    const acciones = detalleCajaTipo==='gastos' ? `
+    let acciones = '';
+    if(detalleCajaTipo==='gastos'){
+      acciones = `
       <button class="btn ghost" style="padding:4px 8px;font-size:11px;margin-left:6px;" onclick="editarGasto('${it.id}')">✏️</button>
-      <button class="btn ghost" style="padding:4px 8px;font-size:11px;margin-left:4px;" onclick="borrarGastoDesdeDetalle('${it.id}')">🗑️</button>` : '';
+      <button class="btn ghost" style="padding:4px 8px;font-size:11px;margin-left:4px;" onclick="borrarGastoDesdeDetalle('${it.id}')">🗑️</button>`;
+    } else if(detalleCajaTipo==='cobrado' && it.tipo==='venta'){
+      // Solo ventas rápidas/fletes (sin cliente) se pueden borrar desde acá — un pago de cuota
+      // de un cliente no, porque hay que deshacerlo desde la ficha del cliente para que también
+      // se le actualice el plan (cuotas pagadas, restante, etc).
+      acciones = `<button class="btn ghost" style="padding:4px 8px;font-size:11px;margin-left:6px;" onclick="borrarVentaDesdeDetalle('${it.id}')">🗑️</button>`;
+    }
     const click = esClientes ? ` style="cursor:pointer;" onclick="closeOverlay('ov-detalle-caja'); openClientDetail('${it.clientId}')"` : '';
     return `<div class="rubro-row"${click}><span>${it.fecha} · ${it.nombre}</span><span style="display:flex;align-items:center;"><b>${fmtMoney(it.monto)}</b>${acciones}</span></div>`;
   }).join('') : `<div class="muted">Sin movimientos en ese rango.</div>`;
@@ -2899,6 +2954,22 @@ function borrarGastoDesdeDetalle(id){
   renderDetalleCaja();
   renderCaja();
   toast('Gasto borrado');
+}
+function borrarVentaDesdeDetalle(id){
+  if(!confirm('¿Borrar esta venta/flete cobrado?')) return;
+  // Si venía de un flete de la agenda, lo destilda también para que no quede marcado como
+  // cobrado ahí (si no, al rato vuelve a aparecer el monto porque sigue "registrado").
+  const venta = state.sales.find(x=>x.id===id);
+  if(venta && venta.visitId){
+    const v = state.visits.find(x=>x.id===venta.visitId);
+    if(v){ v.done = false; v.registrado = false; }
+  }
+  state.sales = state.sales.filter(x=>x.id!==id);
+  saveState();
+  renderDetalleCaja();
+  renderCaja();
+  renderAgenda();
+  toast('Venta borrada');
 }
 function renderCaja(){
   const t = todayStr();
