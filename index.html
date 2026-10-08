@@ -344,6 +344,8 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
       <div class="card">
         <h3>Efectivo y transferencia</h3>
         <div id="saldoCajaBox"></div>
+        <button class="btn ghost block" style="margin-top:10px;" onclick="abrirTransferirCaja()">🔄 Pasar plata entre cajas</button>
+        <div id="movimientosCajasBox" style="margin-top:8px;"></div>
       </div>
       <div class="card">
         <h3>Balance total (deuda pendiente de todos los clientes)</h3>
@@ -997,6 +999,24 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
   </div>
 </div>
 
+<!-- MODAL: pasar plata entre cajas -->
+<div class="overlay" id="ov-transferir-caja">
+  <div class="sheet">
+    <div class="sheet-wrap">
+      <button class="close-x" onclick="closeOverlay('ov-transferir-caja')">✕</button>
+      <h2>Pasar plata entre cajas</h2>
+      <div class="muted" style="margin-bottom:12px;">Mueve plata de una caja a la otra (ej: depositaste efectivo en el banco). No cuenta como ingreso ni gasto, solo corrige cuánto hay en cada una.</div>
+      <div class="field"><label>Desde</label>
+        <select id="tcDe" onchange="actualizarDestinoTransferencia()"><option value="efectivo">💵 Efectivo</option><option value="transferencia">🏦 Transferencia</option></select>
+      </div>
+      <div class="field"><label>Hacia</label><input id="tcA" disabled></div>
+      <div class="field"><label>Monto ($)</label><input type="number" id="tcMonto"></div>
+      <div class="field"><label>Fecha</label><input type="date" id="tcFecha"></div>
+      <button class="btn wood block" onclick="guardarTransferenciaCaja()">Confirmar</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -1018,6 +1038,7 @@ let state = {
   comprasProveedor: [], // {id, proveedorId, producto, costo, flete, fecha}
   serviciosProveedor: [], // {id, proveedorId, descripcion, monto, fecha}
   movimientosPerdida: [], // {id, clientId, tipo:'perdida'|'descuento', monto, fecha, nota}
+  movimientosEntreCajas: [], // {id, fecha, monto, de:'efectivo'|'transferencia', a:'efectivo'|'transferencia'} — pase de plata entre cajas, no es ingreso ni gasto
   saldoInicialCaja: null, // {efectivo, transferencia, fecha} — punto de partida para el saldo de efectivo/transferencia en Balance
   nextCode: 1,
   _v: 0 // contador de versión: se usa solo para detectar guardados en conflicto entre dispositivos
@@ -1784,7 +1805,11 @@ function guardarPlanExtra(){
   const frecuencia = document.getElementById('apFrecuencia').value;
   if(!producto || !montoCuota || !cuotas){ toast('Completá producto, monto y cantidad de cuotas'); return; }
   c.planesExtra = c.planesExtra || [];
-  c.planesExtra.push({id:uid(), producto, montoCuota, cuotas, cuotasPagadas:0, fechaPago, frecuencia, acumuladoParcial:0});
+  const planId = uid();
+  c.planesExtra.push({id:planId, producto, montoCuota, cuotas, cuotasPagadas:0, fechaPago, frecuencia, acumuladoParcial:0});
+  // Igual que al crear un cliente nuevo: el producto agregado cuenta como venta a crédito en
+  // la fecha en que se carga (no depende de cuándo vence la primera cuota).
+  state.sales.push({id:uid(), clientId:c.id, planId, monto: cuotas*montoCuota, fecha: todayStr(), nota: producto});
   saveState();
   closeOverlay('ov-agregar-plan');
   renderAll();
@@ -1796,6 +1821,7 @@ function eliminarPlanExtra(clientId, planId){
   if(!c) return;
   if(!confirm('¿Quitar este producto del cliente? Los pagos ya cobrados quedan como están.')) return;
   c.planesExtra = (c.planesExtra||[]).filter(p=>p.id!==planId);
+  state.sales = state.sales.filter(s=> s.planId!==planId);
   saveState();
   renderAll();
   openClientDetail(c.id);
@@ -3262,6 +3288,43 @@ function renderBalance(){
 // suyo). No mira nada anterior a la fecha del saldo inicial, porque los cobros/gastos viejos
 // no siempre tenían el método cargado. Devuelve {efectivo, transferencia} para reusar en el
 // estado general, o null si todavía no se cargó un saldo inicial.
+function renderMovimientosEntreCajas(){
+  const box = document.getElementById('movimientosCajasBox');
+  if(!box) return;
+  const lista = (state.movimientosEntreCajas||[]).slice().sort((a,b)=> b.fecha.localeCompare(a.fecha)).slice(0,5);
+  const nombre = k => k==='transferencia' ? '🏦 Transferencia' : '💵 Efectivo';
+  box.innerHTML = lista.length ? `<div class="muted" style="font-size:11px;margin-bottom:4px;">Últimos pases entre cajas</div>` + lista.map(m=>`
+    <div class="rubro-row"><span style="font-size:12px;">${m.fecha} · ${nombre(m.de)} → ${nombre(m.a)}</span><span style="display:flex;align-items:center;"><b>${fmtMoney(m.monto)}</b><button class="btn ghost" style="padding:4px 8px;font-size:11px;margin-left:6px;" onclick="borrarTransferenciaCaja('${m.id}')">🗑️</button></span></div>
+  `).join('') : '';
+}
+function abrirTransferirCaja(){
+  if(!state.saldoInicialCaja){ toast('Primero cargá el saldo inicial en "Más"'); return; }
+  document.getElementById('tcDe').value = 'efectivo';
+  document.getElementById('tcMonto').value = '';
+  document.getElementById('tcFecha').value = todayStr();
+  actualizarDestinoTransferencia();
+  openOverlay('ov-transferir-caja');
+}
+function actualizarDestinoTransferencia(){
+  document.getElementById('tcA').value = document.getElementById('tcDe').value==='efectivo' ? '🏦 Transferencia' : '💵 Efectivo';
+}
+function guardarTransferenciaCaja(){
+  const de = document.getElementById('tcDe').value;
+  const a = de==='efectivo' ? 'transferencia' : 'efectivo';
+  const monto = Number(document.getElementById('tcMonto').value||0);
+  const fecha = document.getElementById('tcFecha').value || todayStr();
+  if(!monto || monto<=0){ toast('Ingresá un monto'); return; }
+  if(!state.movimientosEntreCajas) state.movimientosEntreCajas = [];
+  state.movimientosEntreCajas.push({id:uid(), fecha, monto, de, a});
+  saveState(); closeOverlay('ov-transferir-caja'); renderBalance();
+  toast('Pase registrado');
+}
+function borrarTransferenciaCaja(id){
+  if(!confirm('¿Borrar este pase entre cajas?')) return;
+  state.movimientosEntreCajas = (state.movimientosEntreCajas||[]).filter(m=>m.id!==id);
+  saveState(); renderBalance();
+  toast('Pase borrado');
+}
 function renderSaldoCaja(){
   const box = document.getElementById('saldoCajaBox');
   const si = state.saldoInicialCaja;
@@ -3274,6 +3337,8 @@ function renderSaldoCaja(){
   state.payments.filter(p=>p.fecha>=si.fecha).forEach(p=> sumar(p.monto, p.metodo||'efectivo'));
   state.sales.filter(s=> !s.clientId && s.fecha>=si.fecha).forEach(s=> sumar(s.monto, s.metodo||'efectivo'));
   state.expenses.filter(e=>e.fecha>=si.fecha).forEach(e=> sumar(-e.monto, e.metodo||'efectivo'));
+  (state.movimientosEntreCajas||[]).filter(m=>m.fecha>=si.fecha).forEach(m=>{ sumar(-m.monto, m.de); sumar(m.monto, m.a); });
+  renderMovimientosEntreCajas();
   box.innerHTML = `
     <div class="rubro-row"><span>💵 Efectivo</span><b>${fmtMoney(efectivo)}</b></div>
     <div class="rubro-row"><span>🏦 Transferencia</span><b>${fmtMoney(transferencia)}</b></div>
