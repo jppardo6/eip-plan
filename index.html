@@ -96,6 +96,11 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
     padding:16px; margin-bottom:12px; border:1px solid var(--line);
   }
   .card h3{margin:0 0 10px;font-size:14.5px;font-weight:700;}
+  .ind-titulo{font-weight:800;font-size:13.5px;cursor:pointer;margin:2px 0 8px;display:inline-block;border-bottom:1px dashed var(--line);}
+  .ind-sep{border-top:1px solid var(--line);margin:16px 0 12px;}
+  .mes-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+  .mes-nav .btn{padding:4px 14px;margin:0;flex:none;}
+  .mes-nav .lbl{font-weight:700;text-transform:capitalize;}
   .muted{color:var(--ink-soft);font-size:12.5px;}
 
   /* Caja / cierre */
@@ -337,33 +342,35 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
     <!-- BALANCE -->
     <section id="sec-balance">
       <div class="card">
-        <h3>Estado general del negocio</h3>
-        <div class="muted" style="margin-bottom:8px;">Activos (lo que tenés y te deben) contra pasivos (lo que debés)</div>
-        <div id="estadoGeneralBox"></div>
-      </div>
-      <div class="card">
         <h3>Efectivo y transferencia</h3>
         <div id="saldoCajaBox"></div>
         <button class="btn ghost block" style="margin-top:10px;" onclick="abrirTransferirCaja()">🔄 Pasar plata entre cajas</button>
         <div id="movimientosCajasBox" style="margin-top:8px;"></div>
       </div>
       <div class="card">
-        <h3>Balance total (deuda pendiente de todos los clientes)</h3>
-        <div style="font-size:24px;font-weight:800;" id="scoreBalanceTotal">$0</div>
-      </div>
-      <div class="card">
-        <h3>Objetivo del mes</h3>
+        <h3>Objetivo del mes y cuentas</h3>
         <div id="metaMes"></div>
+        <div class="ind-sep"></div>
+        <div style="font-weight:700;margin-bottom:6px;">Altas y bajas de este mes</div>
+        <div class="rubro-row" style="cursor:pointer;" onclick="abrirDetalleCaja('altas')"><span>🆕 Cuentas nuevas ›</span><b id="altasCantidadMes">0</b></div>
+        <div class="rubro-row"><span>Representan por mes en cuotas</span><b id="altasMontoMes">$0</b></div>
+        <div class="rubro-row" style="margin-top:10px;cursor:pointer;" onclick="abrirDetalleCaja('bajas')"><span>✅ Cuentas saldadas ›</span><b id="saldadasCantidadMes">0</b></div>
+        <div class="rubro-row"><span>Dejan de representar por mes</span><b id="saldadasMontoMes">$0</b></div>
       </div>
       <div class="card">
-        <h3>Ritmo de cobranza semanal</h3>
-        <div class="muted" style="margin-bottom:8px;">Divide el mes en 4 semanas según las fechas de cobro ya agendadas, y compara contra lo efectivamente cobrado</div>
+        <h3>Cobranza del mes</h3>
+        <div class="ind-titulo" onclick="mostrarInfoIndicador('ritmo')">Ritmo de cobranza semanal ⓘ</div>
         <div id="ritmoCobranzaResumen" style="margin-bottom:10px;"></div>
         <div id="ritmoCobranzaBox"></div>
+        <div class="ind-sep"></div>
+        <div class="ind-titulo" onclick="mostrarInfoIndicador('estimacion')">Estimación por promedio histórico ⓘ</div>
+        <div id="estimacionCobranzaBox"></div>
       </div>
       <div class="card">
-        <h3>Estimación por promedio histórico</h3>
-        <div id="estimacionCobranzaBox"></div>
+        <h3>Ingresos por origen</h3>
+        <div id="ingresosOrigenNav"></div>
+        <div id="ingresosOrigenBarra" style="display:flex;height:14px;border-radius:8px;overflow:hidden;margin-bottom:12px;background:rgba(255,255,255,0.06);"></div>
+        <div id="ingresosOrigenBox"></div>
       </div>
       <div class="card">
         <h3>Semáforo de vencimientos</h3>
@@ -383,28 +390,20 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
         <div id="proyeccionCobranzaTabla" style="margin-top:10px;"></div>
       </div>
       <div class="card">
-        <h3>Gastos por rubro — este mes</h3>
-        <div class="muted" style="margin-bottom:8px;">Incluye lo condonado en incobrables y descuentos, como un rubro más</div>
+        <h3>Gastos por rubro</h3>
+        <div id="gastosPorRubroNav"></div>
         <div id="gastosPorRubroBarra" style="display:flex;height:14px;border-radius:8px;overflow:hidden;margin-bottom:12px;background:rgba(255,255,255,0.06);"></div>
         <div id="gastosPorRubroMes"></div>
       </div>
       <div class="card">
-        <h3>Ajustes sin categorizar este mes</h3>
-        <div class="muted" style="margin-bottom:8px;">Ventas rápidas marcadas "ajuste" y gastos cargados en el rubro "Ajuste" — cuentan como venta/gasto normal en el resto de la app, esto es solo para que veas cuánto no estás pudiendo categorizar bien</div>
+        <h3>Ajustes sin categorizar este mes <span style="cursor:pointer;" onclick="mostrarInfoIndicador('ajustes')">ⓘ</span></h3>
         <div id="ajustesMesBox"></div>
       </div>
       <div class="card">
-        <h3>Costo por kilómetro</h3>
-        <div class="muted" style="margin-bottom:8px;">Se actualiza solo con lo gastado en combustible y los km recorridos entre cargas. Si además cargás la autonomía restante antes de cada carga, el cálculo se afina (no hace falta llenar siempre el tanque a full para que sea preciso)</div>
+        <h3>Costo por kilómetro <span style="cursor:pointer;" onclick="mostrarInfoIndicador('costokm')">ⓘ</span></h3>
         <div style="font-size:24px;font-weight:800;" id="costoPorKm">—</div>
         <div class="muted" id="costoPorKmDetalle" style="margin-top:4px;font-size:12px;"></div>
-      </div>
-      <div class="card">
-        <h3>Altas y bajas de este mes</h3>
-        <div class="rubro-row" style="cursor:pointer;" onclick="abrirDetalleCaja('altas')"><span>🆕 Cuentas nuevas ›</span><b id="altasCantidadMes">0</b></div>
-        <div class="rubro-row"><span>Representan por mes en cuotas</span><b id="altasMontoMes">$0</b></div>
-        <div class="rubro-row" style="margin-top:10px;cursor:pointer;" onclick="abrirDetalleCaja('bajas')"><span>✅ Cuentas saldadas ›</span><b id="saldadasCantidadMes">0</b></div>
-        <div class="rubro-row"><span>Dejan de representar por mes</span><b id="saldadasMontoMes">$0</b></div>
+        <div id="cargasCombustibleBox" style="margin-top:10px;"></div>
       </div>
       <div class="card">
         <h3>Incobrables y descuentos</h3>
@@ -413,6 +412,11 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
         <div class="muted" style="margin-bottom:6px;">Acumulado histórico</div>
         <div style="font-size:20px;font-weight:800;margin-bottom:10px;" id="perdidasTotal">$0</div>
         <div id="perdidasDetalle"></div>
+      </div>
+      <div class="card">
+        <h3>Estado general del negocio</h3>
+        <div class="muted" style="margin-bottom:8px;">Activos (lo que tenés y te deben) contra pasivos (lo que debés)</div>
+        <div id="estadoGeneralBox"></div>
       </div>
     </section>
 
@@ -677,7 +681,8 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
       </div>
       <div class="field"><label>Fecha</label><input type="date" id="fFecha"></div>
       <div class="field"><label>Horario pedido (opcional)</label><input type="time" id="fHora"></div>
-      <button class="btn wood block" onclick="addFleteRapido()">Agregar a la ruta</button>
+      <button class="btn wood block" style="margin-bottom:8px;" onclick="addFleteRapido(true)">Guardar y cobrar</button>
+      <button class="btn ghost block" onclick="addFleteRapido(false)">Guardar (cobrar después)</button>
     </div>
   </div>
 </div>
@@ -707,7 +712,6 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
       <button class="btn ghost block" style="margin-bottom:10px;" onclick="closeOverlay('ov-agenda-menu'); openAddVisit();">👤 Visita a un cliente</button>
       <button class="btn ghost block" style="margin-bottom:10px;" onclick="closeOverlay('ov-agenda-menu'); openFleteRapido();">🚚 Flete</button>
       <button class="btn ghost block" style="margin-bottom:10px;" onclick="closeOverlay('ov-agenda-menu'); openAddTask();">📝 Tarea</button>
-      <button class="btn ghost block" style="margin-bottom:10px;" onclick="closeOverlay('ov-agenda-menu'); openPresupuestoRapido();">🖌️ Presupuesto de pintura</button>
       <button class="btn ghost block" style="margin-bottom:10px;" onclick="closeOverlay('ov-agenda-menu'); openVentaRapida();">💵 Venta rápida</button>
       <button class="btn ghost block" onclick="closeOverlay('ov-agenda-menu'); openExpense();">💸 Gasto</button>
     </div>
@@ -1013,6 +1017,17 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
       <div class="field"><label>Monto ($)</label><input type="number" id="tcMonto"></div>
       <div class="field"><label>Fecha</label><input type="date" id="tcFecha"></div>
       <button class="btn wood block" onclick="guardarTransferenciaCaja()">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: cartel flotante genérico (explicaciones y detalles) -->
+<div class="overlay" id="ov-flotante">
+  <div class="sheet">
+    <div class="sheet-wrap">
+      <button class="close-x" onclick="closeOverlay('ov-flotante')">✕</button>
+      <h2 id="flotanteTitulo"></h2>
+      <div id="flotanteBody"></div>
     </div>
   </div>
 </div>
@@ -1528,7 +1543,11 @@ function renderClientes(filterText, filterType){
   }).join('');
 }
 function renderRenovarList(){
-  const buenosPagadores = todosLosPlanesPendientes().filter(({t})=> t.cuotas>0 && (t.cuotas-t.cuotasPagadas)<=2);
+  // Un cliente deja de aparecer apenas tiene otro crédito en marcha (con más de 2 cuotas por
+  // pagar): ya se le renovó, no hace falta seguir ofreciéndole uno.
+  const pendientes = todosLosPlanesPendientes();
+  const renovado = new Set(pendientes.filter(({t})=> (t.cuotas-t.cuotasPagadas)>2).map(({c})=>c.id));
+  const buenosPagadores = pendientes.filter(({c,t})=> t.cuotas>0 && (t.cuotas-t.cuotasPagadas)<=2 && !renovado.has(c.id));
   document.getElementById('renovarList').innerHTML = buenosPagadores.length ? buenosPagadores.map(({c,t})=>`
     <div class="rubro-row" style="cursor:pointer;" onclick="openClientDetail('${c.id}')"><span>${c.nombre}${t.producto && (c.planesExtra||[]).length ? ' · '+t.producto : ''}</span><b>Le quedan ${t.cuotas-t.cuotasPagadas} cuotas</b></div>
   `).join('') : `<div class="muted">Por ahora ningún cliente está cerca de terminar su plan.</div>`;
@@ -1806,7 +1825,7 @@ function guardarPlanExtra(){
   if(!producto || !montoCuota || !cuotas){ toast('Completá producto, monto y cantidad de cuotas'); return; }
   c.planesExtra = c.planesExtra || [];
   const planId = uid();
-  c.planesExtra.push({id:planId, producto, montoCuota, cuotas, cuotasPagadas:0, fechaPago, frecuencia, acumuladoParcial:0});
+  c.planesExtra.push({id:planId, producto, montoCuota, cuotas, cuotasPagadas:0, fechaPago, frecuencia, acumuladoParcial:0, fechaCreacion: todayStr()});
   // Igual que al crear un cliente nuevo: el producto agregado cuenta como venta a crédito en
   // la fecha en que se carga (no depende de cuándo vence la primera cuota).
   state.sales.push({id:uid(), clientId:c.id, planId, monto: cuotas*montoCuota, fecha: todayStr(), nota: producto});
@@ -2503,7 +2522,7 @@ function toggleFleteSinCosto(){
   montoInput.disabled = sinCosto;
   if(sinCosto) montoInput.value = '0';
 }
-function addFleteRapido(){
+function addFleteRapido(cobrar){
   const ref = document.getElementById('fRef').value.trim() || 'Flete';
   const direccion = document.getElementById('fDireccion').value.trim();
   const sinCosto = document.getElementById('fSinCosto').checked;
@@ -2511,10 +2530,14 @@ function addFleteRapido(){
   const hora = document.getElementById('fHora').value;
   const fecha = document.getElementById('fFecha').value || todayStr();
   if(!sinCosto && !monto){ toast('Ingresá cuánto tenés que cobrar, o tildá "Sin costo"'); return; }
-  state.visits.push({id:uid(), tipo:'flete', ref, direccion, monto, hora, fecha, done:false, registrado:false, orden:Date.now(), km: 3+Math.round(Math.random()*6)});
+  const nuevoId = uid();
+  state.visits.push({id:nuevoId, tipo:'flete', ref, direccion, monto, hora, fecha, done:false, registrado:false, orden:Date.now(), km: 3+Math.round(Math.random()*6)});
   saveState(); closeOverlay('ov-flete');
   ['fRef','fDireccion','fMonto','fHora'].forEach(id=>document.getElementById(id).value='');
   renderAgenda(); toast('Flete agregado a la ruta del '+fecha);
+  // "Guardar y cobrar": lo deja tildado como cobrado en el momento (pregunta efectivo o
+  // transferencia), sin tener que ir después a la lista a darle al check.
+  if(cobrar) toggleVisit(nuevoId);
 }
 function deleteVisit(id){
   if(!confirm('¿Borrar esta visita/flete de la agenda?')) return;
@@ -2613,7 +2636,8 @@ function confirmarCobroFlete(){
   const v = state.visits.find(x=>x.id===pendingFleteCobroId);
   if(!v){ closeOverlay('ov-flete-cobro'); return; }
   const metodo = document.getElementById('fleteCobroMetodo').value;
-  state.sales.push({id:uid(), monto:v.monto, metodo, fecha:v.fecha||todayStr(), nota:'Flete: '+(v.ref||''), visitId:v.id});
+  const hoyFlete = todayStr();
+  state.sales.push({id:uid(), monto:v.monto, metodo, fecha:(v.fecha && v.fecha<=hoyFlete) ? v.fecha : hoyFlete, nota:'Flete: '+(v.ref||''), visitId:v.id});
   v.done = true; v.registrado = true;
   pendingFleteCobroId = null;
   saveState(); closeOverlay('ov-flete-cobro'); renderAgenda(); renderCaja();
@@ -2899,6 +2923,7 @@ function guardarGasto(){
   saveState(); closeOverlay('ov-gasto');
   document.getElementById('gastoMonto').value=''; document.getElementById('gastoNota').value='';
   renderCaja();
+  renderBalance();
   if(document.getElementById('ov-detalle-caja').classList.contains('show')) renderDetalleCaja();
 }
 
@@ -2919,9 +2944,20 @@ function calcularGastos(desde, hasta){
   return state.expenses.filter(e=>e.fecha>=desde && e.fecha<=hasta)
     .map(e=>({id:e.id, fecha:e.fecha, nombre:e.rubro+(e.subcategoria?' · '+e.subcategoria:'')+(e.nota?' ('+e.nota+')':''), monto:e.monto}));
 }
+// Cuentas nuevas = clientes de muebles nuevos + cada producto/crédito nuevo que se le agrega a
+// un cliente que ya tenía (la segunda venta también es una cuenta nueva, igual que cuando una
+// cuenta se salda cuenta como baja).
 function calcularAltas(desde, hasta){
-  return state.clients.filter(c=> c.type==='muebles' && c.fechaCreacion && c.fechaCreacion>=desde && c.fechaCreacion<=hasta)
-    .map(c=>({clientId:c.id, fecha:c.fechaCreacion, nombre:c.nombre, monto:c.montoCuota||0}));
+  const out = [];
+  state.clients.filter(c=>c.type==='muebles').forEach(c=>{
+    if(c.fechaCreacion && c.fechaCreacion>=desde && c.fechaCreacion<=hasta)
+      out.push({clientId:c.id, fecha:c.fechaCreacion, nombre:c.nombre, monto:c.montoCuota||0});
+    (c.planesExtra||[]).forEach(p=>{
+      if(p.fechaCreacion && p.fechaCreacion>=desde && p.fechaCreacion<=hasta)
+        out.push({clientId:c.id, fecha:p.fechaCreacion, nombre:c.nombre+(p.producto?' · '+p.producto:''), monto:p.montoCuota||0});
+    });
+  });
+  return out;
 }
 function calcularBajas(desde, hasta){
   const out = [];
@@ -3023,7 +3059,9 @@ function renderCaja(){
   const mesActual = t.slice(0,7);
 
   // Cumplimiento del mes: clientes nuevos + cobrado vs pactado
-  const clientesNuevosMes = state.clients.filter(c=> c.fechaCreacion && c.fechaCreacion.startsWith(mesActual)).length;
+  // Cuenta también los productos nuevos agregados a clientes que ya tenían (segunda venta).
+  const productosNuevosMes = state.clients.reduce((n,c)=> n + (c.planesExtra||[]).filter(p=>p.fechaCreacion && p.fechaCreacion.startsWith(mesActual)).length, 0);
+  const clientesNuevosMes = state.clients.filter(c=> c.fechaCreacion && c.fechaCreacion.startsWith(mesActual)).length + productosNuevosMes;
   const cobradoMes = state.payments.filter(p=>p.fecha.startsWith(mesActual)).reduce((s,p)=>s+p.monto,0);
   const pactadoMes = pendientesPlanesCaja.filter(({t})=>(t.fechaPago||'').startsWith(mesActual)).reduce((s,{t})=>s+t.montoCuota,0);
   document.getElementById('cumplimientoMes').innerHTML = `
@@ -3152,7 +3190,6 @@ function renderBalance(){
   const clientesConDeudaCount = new Set(pendientesPlanes.map(x=>x.c.id)).size;
 
   const balanceTotal = pendientesPlanes.reduce((s,x)=> s + x.restante, 0);
-  document.getElementById('scoreBalanceTotal').textContent = fmtMoney(balanceTotal) + ` · ${clientesConDeudaCount} clientes`;
 
   renderEstadoGeneral(balanceTotal);
   renderAjustesMes();
@@ -3225,34 +3262,14 @@ function renderBalance(){
 
   renderProyeccionCobranza();
 
-  // Gastos por rubro de este mes: incluye Personales/Empleado/Insumos/Combustible más lo
-  // condonado en incobrables y descuentos, como un rubro más (no es plata que salió de la
-  // caja, pero sí es un costo real del negocio este mes). Solo afecta esta vista de análisis,
-  // no el balance de Caja del día a día.
-  const mesActualBal = todayStr().slice(0,7);
-  const gastosMes = state.expenses.filter(e=>e.fecha.startsWith(mesActualBal));
-  const porRubro = {};
-  gastosMes.forEach(e=>{
-    const clave = e.rubro==='Personales' && e.subcategoria ? `Personales · ${e.subcategoria}` : e.rubro;
-    porRubro[clave] = (porRubro[clave]||0) + e.monto;
-  });
-  const perdidasMesRubro = (state.movimientosPerdida||[]).filter(m=>m.fecha.startsWith(mesActualBal)).reduce((s,m)=>s+m.monto,0);
-  if(perdidasMesRubro>0) porRubro['Incobrables/Descuentos'] = perdidasMesRubro;
-  const COLOR_INCOBRABLES = '#7A3B69';
-  const colorDeRubro = (k)=> k==='Incobrables/Descuentos' ? COLOR_INCOBRABLES : (RUBRO_COLORS[k.split(' · ')[0]] || '#999');
-  const clavesRubro = Object.keys(porRubro);
-  const totalGastosMes = clavesRubro.reduce((s,k)=>s+porRubro[k],0);
-  document.getElementById('gastosPorRubroBarra').innerHTML = totalGastosMes>0 ? clavesRubro
-    .map(k=>`<div style="width:${(porRubro[k]/totalGastosMes*100).toFixed(1)}%;background:${colorDeRubro(k)};"></div>`).join('')
-    : '';
-  document.getElementById('gastosPorRubroMes').innerHTML = clavesRubro.length ? clavesRubro.map(k=>{
-    return `<div class="rubro-row"><span><span class="dot" style="background:${colorDeRubro(k)}"></span>${k}</span><b>${fmtMoney(porRubro[k])}</b></div>`;
-  }).join('') : `<div class="muted">Sin gastos cargados este mes.</div>`;
+  renderGastosPorRubro();
+  renderIngresosOrigen();
 
   // Altas: clientes-muebles cargados este mes (plan principal). Bajas: planes (principal o extra)
   // que se terminaron de pagar este mes (fechaSaldado, marcada al completar la última cuota).
-  const altasMes = state.clients.filter(c=> c.type==='muebles' && c.fechaCreacion && c.fechaCreacion.startsWith(mesActualBal));
-  const montoAltasMes = altasMes.reduce((s,c)=> s + (c.montoCuota||0), 0);
+  const mesActualBal = todayStr().slice(0,7);
+  const altasMes = calcularAltas(mesActualBal+'-01', mesActualBal+'-31');
+  const montoAltasMes = altasMes.reduce((s,a)=> s + (a.monto||0), 0);
   document.getElementById('altasCantidadMes').textContent = altasMes.length;
   document.getElementById('altasMontoMes').textContent = fmtMoney(montoAltasMes);
 
@@ -3267,6 +3284,7 @@ function renderBalance(){
   document.getElementById('saldadasMontoMes').textContent = fmtMoney(montoSaldadasMes);
 
   renderCostoPorKm();
+  renderCargasCombustible();
 
   // Incobrables (pérdidas) y descuentos
   const mesActualPerdidas = todayStr().slice(0,7);
@@ -3324,6 +3342,139 @@ function borrarTransferenciaCaja(id){
   state.movimientosEntreCajas = (state.movimientosEntreCajas||[]).filter(m=>m.id!==id);
   saveState(); renderBalance();
   toast('Pase borrado');
+}
+
+/* ---------- Cartel flotante, navegación por meses y análisis de Balance ---------- */
+function abrirFlotante(titulo, html){
+  document.getElementById('flotanteTitulo').textContent = titulo;
+  document.getElementById('flotanteBody').innerHTML = html;
+  openOverlay('ov-flotante');
+}
+const INFO_INDICADORES = {
+  ritmo: {titulo:'Ritmo de cobranza semanal', texto:'Divide el mes en 4 tramos (días 1-7, 8-14, 15-21 y 22 al fin de mes). Para cada uno compara lo que ya se cobró contra lo esperado: lo cobrado más las cuotas que todavía están agendadas para cobrar en esos días. Solo cuenta pagos de cuotas de clientes, no ventas rápidas ni fletes.'},
+  estimacion: {titulo:'Estimación por promedio histórico', texto:'Mira cómo se repartió la cobranza entre las 4 semanas en los últimos 4 meses cerrados (sin contar el mes en curso) y aplica ese porcentaje promedio al total esperado de este mes, para estimar cuánto debería entrar cada semana. El cambio de mes se actualiza solo.'},
+  ajustes: {titulo:'Ajustes sin categorizar', texto:'Ventas rápidas marcadas "ajuste" y gastos cargados en el rubro "Ajuste". Cuentan como venta o gasto normal en el resto de la app; esto es solo para que veas cuánto no estás pudiendo categorizar bien.'},
+  costokm: {titulo:'Costo por kilómetro', texto:'Se actualiza solo con lo gastado en combustible y los km recorridos entre cargas. Si además cargás la autonomía restante antes de cada carga, el cálculo se afina (no hace falta llenar siempre el tanque a full). Si alguna carga vieja quedó con kilometraje de otra cantidad de dígitos, editala desde la lista de cargas para corregirla.'},
+};
+function mostrarInfoIndicador(clave){
+  const i = INFO_INDICADORES[clave];
+  if(i) abrirFlotante(i.titulo, `<div style="line-height:1.5;">${i.texto}</div>`);
+}
+function desplazarMes(ym, delta){
+  const d = new Date(Number(ym.slice(0,4)), Number(ym.slice(5,7))-1+delta, 1);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+}
+function nombreMesLargo(ym){
+  return new Date(ym+'-02T00:00:00').toLocaleDateString('es-AR',{month:'long', year:'numeric'});
+}
+function navMesHtml(ym, fnCambiar){
+  const esActual = ym >= todayStr().slice(0,7);
+  return `<div class="mes-nav">
+    <button class="btn ghost" onclick="${fnCambiar}(-1)">◀</button>
+    <span class="lbl">${nombreMesLargo(ym)}${esActual?' · mes vigente':''}</span>
+    <button class="btn ghost" ${esActual?'disabled style="opacity:.3;"':''} onclick="${fnCambiar}(1)">▶</button>
+  </div>`;
+}
+
+// Gastos por rubro: arranca en el mes vigente, con flechas para ir a meses anteriores; tocar un
+// rubro abre el detalle de ese rubro en ese mes.
+let mesGastosRubro = null;
+let clavesRubroActuales = [];
+function mesGastosVisible(){ return mesGastosRubro || todayStr().slice(0,7); }
+function cambiarMesGastosRubro(delta){
+  const nuevo = desplazarMes(mesGastosVisible(), delta);
+  if(nuevo > todayStr().slice(0,7)) return;
+  mesGastosRubro = nuevo;
+  renderGastosPorRubro();
+}
+function claveRubroGasto(e){ return e.rubro==='Personales' && e.subcategoria ? `Personales · ${e.subcategoria}` : e.rubro; }
+function renderGastosPorRubro(){
+  // Incluye lo condonado en incobrables y descuentos como un rubro más (no es plata que salió
+  // de la caja, pero sí es un costo real del negocio ese mes). Solo afecta esta vista de análisis.
+  const mes = mesGastosVisible();
+  const porRubro = {};
+  state.expenses.filter(e=>e.fecha.startsWith(mes)).forEach(e=>{
+    const k = claveRubroGasto(e);
+    porRubro[k] = (porRubro[k]||0) + e.monto;
+  });
+  const perdidas = (state.movimientosPerdida||[]).filter(m=>m.fecha.startsWith(mes)).reduce((s,m)=>s+m.monto,0);
+  if(perdidas>0) porRubro['Incobrables/Descuentos'] = perdidas;
+  const colorDeRubro = k => k==='Incobrables/Descuentos' ? '#7A3B69' : (RUBRO_COLORS[k.split(' · ')[0]] || '#999');
+  clavesRubroActuales = Object.keys(porRubro);
+  const total = clavesRubroActuales.reduce((s,k)=>s+porRubro[k],0);
+  document.getElementById('gastosPorRubroNav').innerHTML = navMesHtml(mes, 'cambiarMesGastosRubro');
+  document.getElementById('gastosPorRubroBarra').innerHTML = total>0 ? clavesRubroActuales
+    .map(k=>`<div style="width:${(porRubro[k]/total*100).toFixed(1)}%;background:${colorDeRubro(k)};"></div>`).join('') : '';
+  document.getElementById('gastosPorRubroMes').innerHTML = clavesRubroActuales.length ? clavesRubroActuales.map((k,i)=>
+    `<div class="rubro-row" style="cursor:pointer;" onclick="abrirDetalleRubro(${i})"><span><span class="dot" style="background:${colorDeRubro(k)}"></span>${k} ›</span><b>${fmtMoney(porRubro[k])}</b></div>`
+  ).join('') + `<div class="rubro-row" style="border-top:1px solid var(--line);"><span><b>Total</b></span><b>${fmtMoney(total)}</b></div>`
+    : `<div class="muted">Sin gastos cargados en este mes.</div>`;
+}
+function abrirDetalleRubro(i){
+  const clave = clavesRubroActuales[i];
+  const mes = mesGastosVisible();
+  if(!clave) return;
+  let filas = '', total = 0;
+  if(clave==='Incobrables/Descuentos'){
+    const movs = (state.movimientosPerdida||[]).filter(m=>m.fecha.startsWith(mes)).sort((a,b)=>b.fecha.localeCompare(a.fecha));
+    total = movs.reduce((s,m)=>s+m.monto,0);
+    filas = movs.map(m=>{
+      const cli = state.clients.find(x=>x.id===m.clientId);
+      return `<div class="rubro-row"><span>${m.fecha} · ${m.tipo==='perdida'?'❌ Pérdida':'🏷️ Descuento'} · ${cli?cli.nombre:'—'}${m.nota?' ('+m.nota+')':''}</span><b>${fmtMoney(m.monto)}</b></div>`;
+    }).join('');
+  } else {
+    const gastos = state.expenses.filter(e=> e.fecha.startsWith(mes) && claveRubroGasto(e)===clave).sort((a,b)=>b.fecha.localeCompare(a.fecha));
+    total = gastos.reduce((s,e)=>s+e.monto,0);
+    filas = gastos.map(e=>`<div class="rubro-row"><span>${e.fecha}${e.subcategoria && !clave.includes('·') ? ' · '+e.subcategoria : ''}${e.nota?' · '+e.nota:''}${e.metodo==='transferencia'?' · 🏦':''}</span><b>${fmtMoney(e.monto)}</b></div>`).join('');
+  }
+  abrirFlotante(`${clave} — ${nombreMesLargo(mes)}`,
+    (filas || '<div class="muted">Sin movimientos.</div>') + `<div class="rubro-row" style="border-top:1px solid var(--line);"><span><b>Total</b></span><b>${fmtMoney(total)}</b></div>`);
+}
+
+// Ingresos por origen: cuánto entró en el mes (vigente por defecto, o anteriores) según de
+// dónde vino: cobranza de cuotas, pintura, fletes u otras ventas rápidas.
+let mesIngresosOrigen = null;
+function mesIngresosVisible(){ return mesIngresosOrigen || todayStr().slice(0,7); }
+function cambiarMesIngresosOrigen(delta){
+  const nuevo = desplazarMes(mesIngresosVisible(), delta);
+  if(nuevo > todayStr().slice(0,7)) return;
+  mesIngresosOrigen = nuevo;
+  renderIngresosOrigen();
+}
+function renderIngresosOrigen(){
+  const mes = mesIngresosVisible();
+  const o = {cobranza:0, pintura:0, flete:0, otras:0};
+  state.payments.filter(p=>p.fecha.startsWith(mes)).forEach(p=>{
+    const cli = state.clients.find(c=>c.id===p.clientId);
+    if(p.tipo==='pintura' || (cli && cli.type==='pintura')) o.pintura += p.monto; else o.cobranza += p.monto;
+  });
+  state.sales.filter(s=>!s.clientId && s.fecha.startsWith(mes)).forEach(s=>{
+    if(s.visitId || /^flete/i.test(s.nota||'')) o.flete += s.monto; else o.otras += s.monto;
+  });
+  const items = [
+    ['Cobranza de cuotas (muebles)', o.cobranza, '#4A9FD8'],
+    ['Pintura', o.pintura, '#A9642F'],
+    ['Fletes', o.flete, '#6BA34A'],
+    ['Ventas rápidas / otros', o.otras, '#999999'],
+  ];
+  const total = items.reduce((s,x)=>s+x[1],0);
+  document.getElementById('ingresosOrigenNav').innerHTML = navMesHtml(mes, 'cambiarMesIngresosOrigen');
+  document.getElementById('ingresosOrigenBarra').innerHTML = total>0 ? items.filter(x=>x[1]>0)
+    .map(x=>`<div style="width:${(x[1]/total*100).toFixed(1)}%;background:${x[2]};"></div>`).join('') : '';
+  document.getElementById('ingresosOrigenBox').innerHTML = items.map(([n,v,c])=>
+    `<div class="rubro-row"><span><span class="dot" style="background:${c}"></span>${n}</span><b>${fmtMoney(v)}${total>0 ? ' · '+Math.round(v/total*100)+'%' : ''}</b></div>`
+  ).join('') + `<div class="rubro-row" style="border-top:1px solid var(--line);"><span><b>Total que entró</b></span><b>${fmtMoney(total)}</b></div>`;
+}
+
+// Lista de las últimas cargas de combustible, con edición, para corregir kilometrajes (por
+// ejemplo, cargas viejas que quedaron con otra cantidad de dígitos).
+function renderCargasCombustible(){
+  const box = document.getElementById('cargasCombustibleBox');
+  if(!box) return;
+  const cargas = state.expenses.filter(e=>e.rubro==='Combustible').sort((a,b)=>b.fecha.localeCompare(a.fecha)).slice(0,8);
+  box.innerHTML = cargas.length ? `<div class="muted" style="font-size:11px;margin-bottom:4px;">Últimas cargas — tocá ✏️ para corregir kilometraje o autonomía</div>` + cargas.map(e=>
+    `<div class="rubro-row"><span style="font-size:12px;">${e.fecha} · km ${(e.km!==undefined && e.km!==null && e.km!=='') ? e.km : '—'}${(e.autonomiaRestante!==undefined && e.autonomiaRestante!==null && e.autonomiaRestante!=='') ? ' · aut. '+e.autonomiaRestante : ''}</span><span style="display:flex;align-items:center;"><b>${fmtMoney(e.monto)}</b><button class="btn ghost" style="padding:4px 8px;font-size:11px;margin-left:6px;" onclick="editarGasto('${e.id}')">✏️</button></span></div>`
+  ).join('') : '';
 }
 function renderSaldoCaja(){
   const box = document.getElementById('saldoCajaBox');
