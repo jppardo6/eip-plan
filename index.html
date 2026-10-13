@@ -20,6 +20,13 @@ const firebaseConfig = {
   messagingSenderId: "272741469853",
   appId: "1:272741469853:web:2c32c78abdd5a4505ece74"
 };
+if(typeof firebase==='undefined'){
+  document.addEventListener('DOMContentLoaded',()=>{
+    const el=document.getElementById('loginError');
+    if(el) el.textContent='Sin internet y la app todavía no se guardó para uso sin conexión. Conectate una vez y volvé a abrirla.';
+  });
+  throw new Error('firebase no disponible (sin conexión)');
+}
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
