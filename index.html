@@ -1724,6 +1724,7 @@ function openClientDetail(id){
       </div>
       ${restante>0 && c.tel ? `<button class="btn ghost block" style="margin-bottom:8px;" onclick="sendReminderWA('${c.id}')">📲 Avisar: hoy vence tu cuota</button>` : ''}
       <button class="btn ghost block" style="margin-bottom:8px;" onclick="generarEstadoCuentaPDF('${c.id}', null)">🧾 Generar estado de cuenta (PDF)</button>
+      ${c.tel ? `<button class="btn ghost block" style="margin-bottom:8px;" onclick="reenviarBienvenida('${c.id}')">📩 Reenviar mensaje de bienvenida</button>` : ''}
       ${(c.planesExtra||[]).map(p=>renderPlanExtraCard(c,p)).join('')}
       <button class="btn ghost block" style="margin:10px 0;" onclick="abrirAgregarPlan('${c.id}')">➕ Agregar otro producto a este cliente</button>
       ${renderHistorialCliente(c.id)}
@@ -1792,6 +1793,7 @@ function renderPlanExtraCard(c, p){
         <div><div class="muted">Agendado</div><div>${p.fechaPago||'—'}</div></div>
         ${restante>0 ? `<button class="btn wood" onclick="closeOverlay('ov-detail'); openReprogramar('${c.id}', null, '${p.id}');" style="border-radius:50%;width:38px;height:38px;font-size:16px;padding:0;">🗓️</button>` : ''}
       </div>
+      ${c.tel ? `<button class="btn ghost" style="margin-top:8px;font-size:12px;" onclick="reenviarNuevaCompra('${c.id}','${p.id}')">📩 Reenviar mensaje de este producto</button>` : ''}
       <div style="margin-top:8px;">
         <div class="muted">Saldo</div>
         <div style="font-weight:800;font-size:18px;${p.perdida?'color:var(--red);':''}">${p.perdida ? 'Pérdida ✗' : (restante>0 ? fmtMoney(restante) : 'Saldado ✓')}</div>
@@ -1834,6 +1836,22 @@ function guardarPlanExtra(){
   renderAll();
   openClientDetail(c.id);
   toast('Producto agregado');
+  enviarNuevaCompraWA(c, {producto, cuotas, montoCuota, frecuencia, fechaPago});
+}
+// Mensaje distinto al de bienvenida: para un cliente que ya existe y suma otro producto.
+function reenviarBienvenida(id){ const c=state.clients.find(x=>x.id===id); if(c) enviarBienvenidaWA(c); }
+function reenviarNuevaCompra(id, planId){
+  const c=state.clients.find(x=>x.id===id); if(!c) return;
+  const p=(c.planesExtra||[]).find(x=>x.id===planId); if(p) enviarNuevaCompraWA(c, p);
+}
+function enviarNuevaCompraWA(client, p){
+  if(!client.tel){ return; }
+  const msg = `¡Hola ${client.nombre}! 🌲 Gracias por volver a elegirnos, ¡es un gusto seguir acompañándote!\n\n`
+    + `Sumamos a tu cuenta: ${p.producto}\n`
+    + `• ${p.cuotas} cuotas de ${fmtMoney(p.montoCuota)} (${p.frecuencia==='semanal'?'semanales':'mensuales'})\n`
+    + `• Primer vencimiento: ${p.fechaPago}\n\n`
+    + `Esperamos que lo disfrutes. Cualquier duda o consulta, escribinos por acá cuando quieras.`;
+  window.open('https://wa.me/' + client.tel.replace(/\D/g,'') + '?text=' + encodeURIComponent(msg), '_blank');
 }
 function eliminarPlanExtra(clientId, planId){
   const c = state.clients.find(x=>x.id===clientId);
