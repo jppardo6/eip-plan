@@ -572,7 +572,7 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
         </div>
         <div class="field"><label>Producto comprado</label><input id="cProducto" placeholder="Ej: Juego de comedor 6 sillas"></div>
         <div class="field"><label>Frecuencia de pago</label>
-          <select id="cFrecuencia"><option value="semanal">Semanal</option><option value="mensual">Mensual</option></select>
+          <select id="cFrecuencia"><option value="semanal">Semanal</option><option value="quincenal">Quincenal</option><option value="mensual">Mensual</option></select>
         </div>
         <div class="field"><label>Monto de cada cuota ($)</label><input id="cMontoCuota" type="number" placeholder="Ej: 12000"></div>
         <div class="field"><label>Cantidad de cuotas</label><input id="cCuotas" type="number" placeholder="Ej: 10"></div>
@@ -900,7 +900,7 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
       <div class="field"><label>Pago acordado ($)</label><input type="number" id="esqMonto"></div>
       <div class="field"><label>Próxima fecha de pago</label><input type="date" id="esqFecha"></div>
       <div class="field"><label>Esquema</label>
-        <select id="esqFrecuencia"><option value="mensual">Mensual</option><option value="semanal">Semanal</option></select>
+        <select id="esqFrecuencia"><option value="mensual">Mensual</option><option value="quincenal">Quincenal</option><option value="semanal">Semanal</option></select>
       </div>
       <div class="muted" id="esqResumen" style="background:#fff;color:#20232A;border-radius:10px;padding:10px;margin-bottom:6px;"></div>
       <button class="btn wood block" style="margin-top:14px;" onclick="confirmarRefinanciar()">Refinanciar</button>
@@ -962,7 +962,7 @@ db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
       <div class="field"><label>Cantidad de cuotas</label><input type="number" id="apCuotas"></div>
       <div class="field"><label>Primer vencimiento</label><input type="date" id="apFecha"></div>
       <div class="field"><label>Frecuencia</label>
-        <select id="apFrecuencia"><option value="mensual">Mensual</option><option value="semanal">Semanal</option></select>
+        <select id="apFrecuencia"><option value="mensual">Mensual</option><option value="quincenal">Quincenal</option><option value="semanal">Semanal</option></select>
       </div>
       <button class="btn wood block" style="margin-top:10px;" onclick="guardarPlanExtra()">Agregar producto</button>
     </div>
@@ -1436,7 +1436,7 @@ function enviarBienvenidaWA(client){
   if(client.type==='muebles'){
     msg = `¡Hola ${client.nombre}! 🌲 Bienvenido/a a EIP Plan, esperamos que disfrutes tu ${client.producto||'nuevo mueble'}.\n\n`
       + `Así queda tu financiación:\n`
-      + `• ${client.cuotas} cuotas de ${fmtMoney(client.montoCuota)} (${client.frecuencia==='semanal'?'semanales':'mensuales'})\n`
+      + `• ${client.cuotas} cuotas de ${fmtMoney(client.montoCuota)} (${nombreFrecuenciaPl(client.frecuencia)})\n`
       + `• Primer vencimiento: ${client.fechaPago}\n\n`
       + `¡Gracias por confiar en nosotros! Cualquier duda o consulta, escribinos por acá cuando quieras.`;
   } else {
@@ -1855,7 +1855,7 @@ function enviarNuevaCompraWA(client, p){
   if(!client.tel){ return; }
   const msg = `¡Hola ${client.nombre}! 🌲 Gracias por volver a elegirnos, ¡es un gusto seguir acompañándote!\n\n`
     + `Sumamos a tu cuenta: ${p.producto}\n`
-    + `• ${p.cuotas} cuotas de ${fmtMoney(p.montoCuota)} (${p.frecuencia==='semanal'?'semanales':'mensuales'})\n`
+    + `• ${p.cuotas} cuotas de ${fmtMoney(p.montoCuota)} (${nombreFrecuenciaPl(p.frecuencia)})\n`
     + `• Primer vencimiento: ${p.fechaPago}\n\n`
     + `Esperamos que lo disfrutes. Cualquier duda o consulta, escribinos por acá cuando quieras.`;
   window.open('https://wa.me/' + client.tel.replace(/\D/g,'') + '?text=' + encodeURIComponent(msg), '_blank');
@@ -1873,7 +1873,9 @@ function eliminarPlanExtra(clientId, planId){
 }
 
 /* ---------- Estado de cuenta (PDF) ---------- */
-function pasoFrecuencia(t){ return t.frecuencia==='semanal' ? 7 : 30; }
+function diasFrecuencia(f){ return f==='semanal' ? 7 : (f==='quincenal' ? 15 : 30); }
+function nombreFrecuenciaPl(f){ return f==='semanal' ? 'semanales' : (f==='quincenal' ? 'quincenales' : 'mensuales'); }
+function pasoFrecuencia(t){ return diasFrecuencia(t.frecuencia); }
 function sumarDias(fechaStr, dias){
   const d = new Date((fechaStr||todayStr())+'T00:00:00');
   d.setDate(d.getDate() + dias);
@@ -2170,7 +2172,7 @@ function registrarPago(){
       t.cuotasPagadas += 1;
       cuotasCompletadas++;
       const d = new Date((t.fechaPago||todayStr())+'T00:00:00');
-      d.setDate(d.getDate() + (t.frecuencia==='semanal'?7:30));
+      d.setDate(d.getDate() + diasFrecuencia(t.frecuencia));
       t.fechaPago = d.toISOString().slice(0,10);
     }
     t.acumuladoParcial = acumulado>0 ? Math.round(acumulado*100)/100 : 0;
@@ -2377,7 +2379,7 @@ function proximaFechaSugerida(t){
   // que tenía agendada), para no dejar sin querer la reagenda con la fecha de hoy.
   const base = t.fechaPago || todayStr();
   const d = new Date(base+'T00:00:00');
-  d.setDate(d.getDate() + (t.frecuencia==='semanal'?7:30));
+  d.setDate(d.getDate() + diasFrecuencia(t.frecuencia));
   return d.toISOString().slice(0,10);
 }
 function openReprogramar(clientId, visitId, planId){
@@ -2460,8 +2462,8 @@ function actualizarResumenEsquema(){
   if(nuevoMonto<=0){ document.getElementById('esqResumen').textContent=''; return; }
   const n = Math.ceil(restante / nuevoMonto);
   const d = new Date((nuevaFecha||todayStr())+'T00:00:00');
-  d.setMonth(d.getMonth() + (esquema==='mensual' ? (n-1) : 0));
-  if(esquema==='semanal') d.setDate(d.getDate() + (n-1)*7);
+  if(esquema==='mensual') d.setMonth(d.getMonth() + (n-1));
+  else d.setDate(d.getDate() + (n-1)*diasFrecuencia(esquema));
   const ultimaFecha = d.toLocaleDateString('es-AR');
   document.getElementById('esqResumen').textContent =
     `Saldo ${fmtMoney(restante)} será pagado en ${n} pago(s) de ${fmtMoney(nuevoMonto)} por ${esquema}, donde el último es el día ${ultimaFecha}. Próximo pago: ${nuevaFecha}.`;
@@ -3726,13 +3728,13 @@ function renderProyeccionCobranza(){
     const restantes = (t.cuotas||0) - (t.cuotasPagadas||0);
     if(restantes<=0 || !t.fechaPago || !(t.montoCuota>0)) return;
     let fecha = new Date(t.fechaPago+'T00:00:00');
-    const esSemanal = (t.frecuencia||'mensual')==='semanal';
+    const pasoDias = diasFrecuencia(t.frecuencia);
     for(let k=0;k<restantes;k++){
       const mesCuota = fecha.toISOString().slice(0,7);
       const idx = meses.indexOf(mesCuota);
       if(idx>=0) proyeccion[idx] += t.montoCuota;
       fecha = new Date(fecha.getTime());
-      fecha.setDate(fecha.getDate() + (esSemanal?7:30));
+      fecha.setDate(fecha.getDate() + pasoDias);
     }
   });
 
